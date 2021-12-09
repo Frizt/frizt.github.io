@@ -1,0 +1,16 @@
+#default_theme .tabbable_button {
+	color: white;
+	background: rgba(255, 255, 255, 0.2);
+	border: 2px solid rgba(255,255,255,0.4);
+}
+
+#default_theme .tabbable_button:hover {
+	color: white;
+	background: rgba(255, 255, 255, 0.4);
+	border: 2px solid rgba(255,255,255,0.6);
+}
+
+#default_theme .tabbable_button.tabbable_selected {
+	color: white;
+	border: 2px solid rgba(0,255,0,0.6);
+}

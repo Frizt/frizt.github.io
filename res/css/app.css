@@ -1,0 +1,161 @@
+* {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	box-sizing: border-box;
+}
+
+body {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+}
+
+.content {
+	flex-direction: column;
+}
+
+.topbar_content {
+	flex: 0 1 50px;
+	background: gray;
+	flex-direction: row;
+}
+
+.topbar_content .tabbable_button {
+	flex: 0 1 100px;
+	justify-content: center;
+}
+
+.main_content {
+	background: gray;
+	flex-direction: row;
+}
+
+.sidebar_content {
+	flex: 0 1 300px;
+	background: black;
+}
+
+.item_cont {
+	border: 1px solid black;
+	margin: 3px;
+	width: 200px;
+	background: rgba(255,255,255,0.3)
+}
+
+#recipe_list {
+	background: white;
+}
+
+.count_input {
+	flex: 0 1 20px;
+}
+		 
+.name_cont,
+.price_cont {
+	flex-direction: row;
+	flex: 0 1 20px;
+}
+
+.item_info {
+	background: rgb(16, 16, 16);
+	border: 2px solid rgb(56, 53, 47);
+	margin: 15px;
+	color: rgb(170, 170, 170);
+}
+
+.item_info .virtual_list_item {
+	flex-direction: row;
+	margin: 2px 0;
+	height: 40px;
+	justify-content: center;
+}
+
+.recipe_ingredient {
+	font-size: 24px;
+}
+
+.item_info input {
+	width: 100%;
+	background: transparent;
+	border: none;
+}
+
+.contrast_text {
+	--contrast_text_color: rgb(250, 250, 250);
+	color: var(--contrast_text_color);
+}
+
+.item_count,
+.item_price {
+}
+
+.item_info {
+	font-size: 19px;
+}
+
+.item_info .virtual_list_item * {
+	flex-direction: row;
+	align-items: center;
+}
+
+.item_title_cont {
+	flex-direction: row;
+	align-items: center;
+}
+
+.item_title_cont > * {
+	flex: 0 1 0;
+	white-space: nowrap;
+	margin: 0 10px;
+}
+
+.item_info_upper,
+.item_info_lower {
+	flex-direction: row;
+}
+
+.item_info_upper > *,
+.item_info_lower > * {
+	padding: 10px;
+	flex: 1;
+}
+
+.item_info_name {
+	font-size: 24px;
+}
+
+.recipe_cont {
+	align-items: center;
+}
+
+.recipe_area {
+	flex-direction: column;
+}
+
+.recipe_cont .virtual_list_body {
+	max-width: 550px;
+	width: 550px;
+}
+
+.item_info_cont {
+	flex: 0 0 auto;
+	color: rgb(250, 250, 250);
+	text-align: center;
+	align-items: center;
+}
+
+.input_cont {
+	white-space: nowrap;
+	align-items: center;
+	flex-direction: row;
+}
+
+.item_style {
+	padding: 0 5px;
+	background: rgba(255, 255, 0, 0.13);
+}
+
+.item_style > * {
+	flex: 1 1 0;
+}
