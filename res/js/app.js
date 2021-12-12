@@ -878,7 +878,7 @@ function loadDefaults() {
         }).addIngredient("silver_ore", 4);
         db.addItem("gold_ingot", {
             maxBaseMultiplier: 0.12
-        }).addIngredient("silver_ingot", 2).addIngredient("gold_ore", 6).addRefiner("sand_flux", 0).addRefiner("shelldust_flux", 0.20).addRefiner("obsidian_flux", 0.40);
+        }).addIngredient("silver_ingot", 2).addIngredient("gold_ore", 5).addRefiner("sand_flux", 0).addRefiner("shelldust_flux", 0.20).addRefiner("obsidian_flux", 0.40);
         db.addItem("platinum_ingot", {
             maxBaseMultiplier: 0.08
         }).addIngredient("gold_ingot", 2).addIngredient("platinum_ore", 6).addRefiner("sand_flux", 0).addRefiner("shelldust_flux", 0.14).addRefiner("obsidian_flux", 0.25);
