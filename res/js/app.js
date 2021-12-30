@@ -929,8 +929,8 @@ function loadDefaults() {
         db.addItem("furniture_t4_large_orichalcum_2").setXp(15040).addIngredient("orichalcum_ingot", 10).addIngredient("ironwood_planks", 35).addIngredient("mahogany_stain", 2);
         db.addItem("infused_corrupted_coating").setXp(620).addIngredient("salamander_slime", 1).addIngredient("blightroot_stem", 1).addIngredient("rivercress_stem", 1).addIngredient("oil", 1);
         db.addItem("trophy_minor").setXp(1704).addIngredient("lumber", 25).addIngredient("steel_ingot", 25).addIngredient("ash_stain", 1);;
-        db.addItem("trophy_basic").setXp(4608).addIngredient("trophy_minor", 25).addIngredient("wyrdwood_planks", 25).addIngredient("starmetal_ingot", 25).addIngredient("maple_stain", 1);
-        db.addItem("trophy_major").setXp(15360).addIngredient("trophy_basic", 25).addIngredient("ironwood_planks", 25).addIngredient("orichalcum_ingot", 25).addIngredient("mahogany_stain", 1);
+        db.addItem("trophy_basic").setXp(4608).addIngredient("trophy_minor", 1).addIngredient("wyrdwood_planks", 25).addIngredient("starmetal_ingot", 25).addIngredient("maple_stain", 1);
+        db.addItem("trophy_major").setXp(15360).addIngredient("trophy_basic", 1).addIngredient("ironwood_planks", 25).addIngredient("orichalcum_ingot", 25).addIngredient("mahogany_stain", 1);
 
         db.addItem("cartridge_iron").setXp(72).addIngredient("iron_ingot", 4).addIngredient("linen", 1).addIngredient("gunpowder", 1);
         db.addItem("cartridge_steel").setXp(270).addIngredient("steel_ingot", 3).addIngredient("sateen", 2).addIngredient("gunpowder", 1);
