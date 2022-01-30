@@ -1229,8 +1229,14 @@ DEFAULT_DATABASE = {
 			"xp": 9
 		},
         "nut": {
+			"tags": [
+                "nut"
+            ]
 		},
         "fish_oil": {
+			"tags": [
+                "fish_oil"
+            ]
 		},
         "butter": {
             "skill": "cooking",
