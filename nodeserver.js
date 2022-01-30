@@ -7,46 +7,46 @@ const path = require("path");
 const ws = require("ws");
 const mime = require("./mime");
 
-function Server(port) {
-	let self;
+function Server(port, defaultFile) {
+    let self;
 
-	function requestError(res, err) {
-		console.log("Error");
+    function requestError(res, err) {
+        console.log("Error");
         res.writeHead(err, {"Content-Type": "text/plain"});
         res.end(null);
     }
 
-	function fileNotFound(res) {
-		console.log("Not found");
+    function fileNotFound(res) {
+        console.log("Not found");
         res.writeHead(404, {"Content-Type": "text/plain"});
         res.end(null);
     }
 
-	function rootRedirect(res) {
-		console.log("Redirected");
+    function rootRedirect(res) {
+        console.log("Redirected");
         res.setHeader("Location", "/");
         res.setHeader("Content-Type", "text/html");
         res.end(null);
     }
 
-	function serveFile(res, filePath) {
-		console.log("Reading file " + filePath);
-		fs.readFile(filePath, (err, data) => {
-			if(err) {
-				fileNotFound(res);
-				return;
-			}
-			else {
-				res.end(data);
-			}
-		});
-	}
+    function serveFile(res, filePath) {
+        console.log("Reading file " + filePath);
+        fs.readFile(filePath, (err, data) => {
+            if(err) {
+                fileNotFound(res);
+                return;
+            }
+            else {
+                res.end(data);
+            }
+        });
+    }
 
-	self = {
-		
-		server: http.createServer((req, res) => {
-			let pathname = url.parse(req.url).pathname;
-			if(pathname === "/favicon.ico") {
+    self = {
+
+        server: http.createServer((req, res) => {
+            let pathname = url.parse(req.url).pathname;
+            if(pathname === "/favicon.ico") {
                 pathname = "/res/img/favicon.ico";
             }
             let dir = path.dirname(pathname);
@@ -58,26 +58,29 @@ function Server(port) {
                 requestError(res, 404);
                 return;
             }
-			console.log(pathname, dir);
-			switch (dir) {
+            console.log(pathname, dir);
+            switch (dir) {
                 case "res/js":
                 case "res/css":
                 case "res/img":
+                case "common/js":
+                case "common/css":
+                case "common/img":
                     mimeType = mime.get_web_mime_type(path.extname(fileName));
                     break;
-                default: 
+                default:
                     res.setHeader('Content-type', mime.get_file_mime_type(".html"));
-					serveFile(res, "index.html");
+                    serveFile(res, defaultFile);
                     return;
             }
-			console.log(mimeType, path.extname(fileName));
+            //console.log(mimeType, path.extname(fileName));
             if(mimeType === null) {
                 fileNotFound(res);
                 return;
             }
-
-			console.log(mimeType);
+									
             let filePath = path.resolve(path.join(dir, fileName));
+			console.log(filePath);
             let truePath = path.resolve(dir);
             if(!filePath.startsWith(truePath)) {
                 fileNotFound(res);
@@ -109,15 +112,15 @@ function Server(port) {
                 }
             });
         })
-	};
-	let wss = new ws.Server({ noServer : true });
+    };
+    let wss = new ws.Server({ noServer : true });
     wss.on("connection", function(ws, request, connection_host) {
-		console.log(ws);
+        console.log(ws);
         ws.on("close", function(code) {
         });
     });
 
-	self.server.listen(port, "", () => {
+    self.server.listen(port, "", () => {
         console.log(`Listening on ${port}`);
     }).on("upgrade", function(request, socket, head) {
         wss.handleUpgrade(request, socket, head, function(ws) {
@@ -125,7 +128,8 @@ function Server(port) {
         });
     });
 
-	return self;
+    return self;
 };
 
-const app = Server(3001);
+let file = process.argv.length > 2 ? process.argv[2] : "index.html";
+const app = Server(3001, file);

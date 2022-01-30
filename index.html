@@ -1,92 +1,110 @@
 <html>
-	<head>
-		<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
-		<meta content="utf-8" http-equiv="encoding">
-		<link rel="stylesheet" href="/res/css/themes.css">
-		<link rel="stylesheet" href="/res/css/common.css">
-		<link rel="stylesheet" href="/res/css/reset.css">
-		<link rel="stylesheet" href="/res/css/app.css">
-		<script src="/res/js/common.js"></script>
-		<script src="/res/js/app.js"></script>
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	</head>
-	<body id="default_theme">
-		<div class="templates" style="display:none">
-			<div class="ingredient item_style">
-				<div data-html="name" class="item_name"></div>
-				<div><div data-html="count" class="item_count contrast_text"></div></div>
-				<div><div data-html="craft_price" class="item_craft_price contrast_text"></div></div>
-				<div><input data-value="price" data-value_type="price" class="item_price contrast_text"></div>
-			</div>
-			<div class="recipe_ingredient item_style">
-				<input data-value="count" data-value_type="count" class="item_count contrast_text">
-				<div data-html="name" class="item_name contrast_text"></div>
-				<div>Price: <input data-value="price" data-value_type="price" class="item_price contrast_text"></div>
-			</div>
-			<div class="refiner_ingredient item_style">
-				<div data-html="name" class="item_name contrast_text"></div>
-				<div>Price: <input data-value="price" data-value_type="price" class="item_price contrast_text"></div>
-				<div>Multiplier: <input data-value="multiplier" data-value_type="multiplier" class="item_multiplier contrast_text"></div>
-				<div>Count: <div data-html="count" class="item_count contrast_text"></div></div>
-			</div>
-			<div class="used_in item_style">
-				<div data-html="name" class="item_name"></div>
-				<div>Count: <div data-html="count" class="item_count"></div></div>
-			</div>
-			<div class="item_info">
-				<div class="item_info_cont">
-					<div class="item_title_cont">
-						<div data-html="item_info_name" class="item_info_name contrast_text"></div>
-					</div>
-				</div>
-				<div class="item_info_upper">
-					<div class="recipe_area">
-						<div class="recipe_cont"></div>
-						<div class="refiner_cont"></div>
-					</div>
-					<div class="item_info_misc">
-						<div class="input_cont">Craft Price: <div data-html="craft_price" class="item_info_craft_price contrast_text"></div></div>
-						<div class="input_cont">Market Price: <input data-value="market_price" data-value_type="market_price" class="item_info_market_price contrast_text"></div>
-						<div class="input_cont">XP: <input data-value="xp" data-value_type="xp" class="item_info_xp contrast_text"></div>
-						<div class="input_cont">Xp/G: <div data-html="xp_per_gold" class="item_info_xp_per_gold contrast_text"></div></div>
-						<div class="input_cont">Base Multiplier: <input data-value="base_multiplier" data-value_type="base_multiplier" class="item_info_base_multiplier contrast_text"></div>
-						<div class="input_cont">Total Multiplier: <div data-html="total_multiplier" class="item_info_total_multiplier contrast_text"></div></div>
-						<div class="input_cont">Tags: <input data-value="tags" data-value_type="tags" class="item_info_tags contrast_text"></div>
-					</div>
-				</div>
-				<div class="item_info_lower">
-					<div class="ingredients_cont"></div>
-					<div class="used_in_cont"></div>
-				</div>
-			</div>
-		</div>
-		<div style="display:none">
-			<svg id="chevron"><svg version="1.1" viewBox="0 0 134.06 75.519" xmlns="http://www.w3.org/2000/svg">
-				<g transform="translate(-32.559 -132.75)"><path d="m36.806 137 62.666 62.787 62.907-62.787" fill="none" /></g>
-			</svg></svg>
-		</div>
-		<div class="content">
-			<div class="topbar_content">
-				<div class="tabbable_button" tabindex=1 data-tabbable_default="1" data-tabbable_group="sidebar" data-tabbable_name="recipes">
-					Recipes
-				</div>
-				<div class="tabbable_button" tabindex=1 data-tabbable_group="sidebar" data-tabbable_name="about">
-					About
-				</div>
-			</div>
-			<div class="main_content">
-				<div class="sidebar_content">
-					<select class="database_select">
-					</select>
-					<input class="count_input"></input>
-					<div id="recipe_list">
-					</div>
-				</div>
-				<div class="tabbable_content tab_recipes" data-tabbable_group="sidebar" data-tabbable_name="recipes">
-				</div>
-				<div class="tabbable_content tab_about" data-tabbable_group="sidebar" data-tabbable_name="about">
-				</div>
-			</div>
-		</div>
-	</body>
+    <head>
+        <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+        <meta content="utf-8" http-equiv="encoding">
+        <link rel="stylesheet" href="/res/css/themes.css">
+        <link rel="stylesheet" href="/common/css/common.css">
+        <link rel="stylesheet" href="/res/css/reset.css">
+        <link rel="stylesheet" href="/res/css/app.css">
+        <script src="/common/js/common.js"></script>
+        <script src="/res/js/app.js"></script>
+        <script src="/res/js/default_database.js"></script>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body id="default_theme">
+        <div class="templates" style="display:none">
+            <div class="ingredient item_style">
+                <div data-html="name" class="item_name"></div>
+                <div><input data-value="count" data-value_type="refined_count" class="item_count contrast_text"></div>
+                <div><div data-html="craft_price" class="item_craft_price contrast_text"></div></div>
+                <div><input data-value="price" data-value_type="price" class="item_price contrast_text"></div>
+            </div>
+            <div class="recipe_ingredient item_style">
+                <div><input data-value="count" data-value_type="count" class="item_count contrast_text"></div>
+                <div data-html="tags" class="item_tags contrast_text"></div>
+            </div>
+            <div class="refiner_ingredient item_style">
+                <div data-html="name" class="item_name contrast_text"></div>
+                <div>Price: <input data-value="price" data-value_type="price" class="item_price contrast_text"></div>
+                <div>Multiplier: <input data-value="multiplier" data-value_type="multiplier" class="item_multiplier contrast_text"></div>
+                <div>Count: <div data-html="count" class="item_count contrast_text"></div></div>
+            </div>
+            <div class="used_in item_style">
+                <div data-html="name" class="item_name"></div>
+                <div>Count: <div data-html="count" class="item_count"></div></div>
+            </div>
+            <div class="item_info page">
+                <div class="item_info_cont">
+                    <div class="item_title_cont">
+                        <div data-html="item_info_name" class="item_info_name contrast_text"></div>
+                        <input data-value="item_info_craft_count" class="item_info_craft_count contrast_text">
+                    </div>
+                </div>
+                <div class="item_info_upper">
+                    <div class="recipe_area">
+                        <div class="recipe_cont"></div>
+                        <div class="refiner_cont"></div>
+                    </div>
+                    <div class="item_info_misc">
+                        <div class="input_cont">Craft Price: <div data-html="craft_price" class="item_info_craft_price contrast_text"></div></div>
+                        <div class="input_cont">Market Price: <input data-value="market_price" data-value_type="market_price" class="item_info_market_price contrast_text"></div>
+                        <div class="input_cont">Total Per Aptitude: <div data-html="total_per_aptitude" class="item_info_total_per_aptitude contrast_text"></div></div>
+                        <div class="input_cont">Skill: <div data-html="skill" class="item_info_skill contrast_text"></div></div>
+                        <div class="input_cont">XP: <input data-value="xp" data-value_type="xp" class="item_info_xp contrast_text"></div>
+                        <div class="input_cont">Xp/G: <div data-html="xp_per_gold" class="item_info_xp_per_gold contrast_text"></div></div>
+                        <div class="input_cont">Base Multiplier: <input data-value="base_multiplier" data-value_type="base_multiplier" class="item_info_base_multiplier contrast_text"></div>
+                        <div class="input_cont">Gear Multiplier: <input data-value="gear_multiplier" data-value_type="gear_multiplier" class="item_info_gear_multiplier contrast_text"></div>
+                        <div class="input_cont">Total Multiplier: <div data-html="total_multiplier" class="item_info_total_multiplier contrast_text"></div></div>
+                        <div class="input_cont">Tags: <input data-value="tags" data-value_type="tags" class="item_info_tags contrast_text"></div>
+                    </div>
+                </div>
+                <div class="item_info_lower">
+                    <div class="ingredients_cont"></div>
+                    <div class="used_in_cont"></div>
+                </div>
+            </div>
+        </div>
+        <div style="display:none">
+            <svg id="chevron"><svg version="1.1" viewBox="0 0 134.06 75.519" xmlns="http://www.w3.org/2000/svg">
+                <g transform="translate(-32.559 -132.75)"><path d="m36.806 137 62.666 62.787 62.907-62.787" fill="none" /></g>
+            </svg></svg>
+        </div>
+        <div class="content">
+            <div class="topbar_content">
+                <div class="tabbable_button" tabindex=1 data-tabbable_default="1" data-tabbable_group="sidebar" data-tabbable_name="recipes">
+                    Recipes
+                </div>
+                <div class="tabbable_button" tabindex=1 data-tabbable_group="sidebar" data-tabbable_name="gear">
+                    Gear
+                </div>
+                <div class="tabbable_button" tabindex=1 data-tabbable_group="sidebar" data-tabbable_name="about">
+                    About
+                </div>
+                <div class="tabbable_button" tabindex=1 data-tabbable_group="sidebar" data-tabbable_name="raw">
+                    Raw
+                </div>
+            </div>
+            <div class="main_content">
+                <div class="sidebar_content">
+                    <select class="database_select" style="display:none">
+                    </select>
+                    <input class="list_search_input" placeholder="Search recipes"></input>
+                    <div id="recipe_list">
+                    </div>
+                </div>
+                <div class="tabbable_content tab_recipes" data-tabbable_group="sidebar" data-tabbable_name="recipes">
+                </div>
+                <div class="tabbable_content tab_gear" data-tabbable_group="sidebar" data-tabbable_name="gear">
+                </div>
+                <div class="tabbable_content tab_about" data-tabbable_group="sidebar" data-tabbable_name="about">
+                </div>
+                <div class="tabbable_content tab_raw" data-tabbable_group="sidebar" data-tabbable_name="raw">
+                    <div class="page">
+                        <div class="raw_data_export content_editable" spellcheck="false" contenteditable="true">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
 </html>
