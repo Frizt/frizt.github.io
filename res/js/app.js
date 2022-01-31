@@ -744,6 +744,7 @@ function NWDatabase(nwTool) {
             }
         },
         getBestItemWithTags: (tags) => {
+            tags = tags || [];
             var cheapestItem = null;
 			var items = {};
 			if(tags.length) {

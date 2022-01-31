@@ -2,6 +2,37 @@ html {
     height: 100vh;
 }
 
+.main_page_body {
+    flex-direction: column;
+}
+
+.main_page_body_topbar {
+    flex: 0 1 50px;
+    background: gray;
+    flex-direction: row;
+}
+
+.main_page_body_topbar .tabbable_button {
+    flex: 0 1 100px;
+    justify-content: center;
+}
+
+.main_content {
+    background: gray;
+    flex-direction: row;
+}
+
+.main_sidebar_content {
+    flex: 0 1 300px;
+    background: black;
+}
+
+.input_cont {
+    white-space: nowrap;
+    align-items: center;
+    flex-direction: row;
+}
+
 .tabbable_content {
     display: none;
 }
