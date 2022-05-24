@@ -1019,8 +1019,8 @@ function NWTool() {
     self = {
         disableEvents: false,
         tabNav: TabNav({
-            onTabChange: (url) => {
-                if(url === "recipes") {
+            onTabChange: (tabGroup, tabName) => {
+                if(tabName === "recipes") {
                     if(self.currentRenderedItem) {
                         var item = self.database.getItem(self.currentRenderedItem);
                         if(item) {
@@ -1028,7 +1028,7 @@ function NWTool() {
                         }
                     }
                 }
-                else if(url === "raw") {
+                else if(tabName === "raw") {
                     var str = JSON.stringify(self.database.exportToJson(), null, 4);
                     //appendText(div, str);
                     self.disableEvents = true;

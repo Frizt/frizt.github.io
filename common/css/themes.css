@@ -1,16 +1,60 @@
 #default_theme .tabbable_button {
-	color: white;
-	background: rgba(255, 255, 255, 0.2);
-	border: 2px solid rgba(255,255,255,0.4);
+    color: white;
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255,255,255,0.4);
 }
 
 #default_theme .tabbable_button:hover {
-	color: white;
-	background: rgba(255, 255, 255, 0.4);
-	border: 2px solid rgba(255,255,255,0.6);
+    color: white;
+    background: rgba(255, 255, 255, 0.4);
+    border: 2px solid rgba(255,255,255,0.6);
 }
 
 #default_theme .tabbable_button.tabbable_selected {
-	color: white;
-	border: 2px solid rgba(0,255,0,0.6);
+    color: white;
+    border: 2px solid rgba(0,255,0,0.6);
+}
+
+#newworld_theme {
+    color: white;
+}
+
+#newworld_theme .button_theme {
+    --button_theme_background: blue;
+    --button_theme_border: black;
+    background: var(--button_theme_background);
+    border: 2px solid var(--button_theme_border);
+}
+
+#newworld_theme .button_theme:hover {
+    --button_theme_background: orange;
+}
+
+#newworld_theme .button_theme:active {
+    --button_theme_background: blue;
+    --button_theme_border: white;
+}
+
+#newworld_theme .tabbable_button.tabbable_selected {
+    --button_theme_border: white;
+}
+
+#newworld_theme .button_theme.disabled,
+#newworld_theme .button_theme.disabled:hover,
+#newworld_theme .button_theme.disabled:active {
+    --button_theme_background: rgba(0,0,0,0.3);
+}
+
+#newworld_theme .upload_area {
+    border-radius: 15px;
+    --upload_area_background: rgba(255,255,255,0.1);
+}
+
+#newworld_theme .upload_area_child {
+    border-radius: 5px;
+}
+
+#newworld_theme .upload_area.hover,
+#newworld_theme .upload_area:hover {
+    --upload_area_background: rgba(255,255,255,0.3);
 }

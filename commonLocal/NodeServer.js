@@ -7,7 +7,8 @@ const path = require("path");
 const ws = require("ws");
 const mime = require("./mime");
 
-function Server(port, defaultFile) {
+function Server(port, defaultFile, options) {
+    options = options || {};
     let self;
 
     function requestError(res, err) {
@@ -43,9 +44,8 @@ function Server(port, defaultFile) {
     }
 
     self = {
-
         server: http.createServer((req, res) => {
-            let pathname = url.parse(req.url).pathname;
+            let pathname = path.normalize(unescape(url.parse(req.url).pathname));
             if(pathname === "/favicon.ico") {
                 pathname = "/res/img/favicon.ico";
             }
@@ -58,35 +58,51 @@ function Server(port, defaultFile) {
                 requestError(res, 404);
                 return;
             }
-            console.log(pathname, dir);
-            switch (dir) {
-                case "res/js":
-                case "res/css":
-                case "res/img":
-                case "common/js":
-                case "common/css":
-                case "common/img":
+            let resourcePath = path.resolve(dir);
+            //console.log(pathname, dir);
+            let validResourcePaths = [
+                "res\\js",
+                "res\\css",
+                "res\\img",
+                "res\\json",
+                "res\\json",
+                "common\\js",
+                "common\\css",
+                "common\\img"
+            ];
+            let matched = false;
+            for(let i = 0; i < validResourcePaths.length; i++) {
+                if(!(dir + "\\").startsWith(validResourcePaths[i] + "\\")) continue;
+                matched = true;
+                if(validResourcePaths[i].endsWith("json") ||
+                    validResourcePaths[i].endsWith("csv")) {
+                    mimeType = mime.get_file_mime_type(path.extname(fileName));
+                }
+                else {
                     mimeType = mime.get_web_mime_type(path.extname(fileName));
-                    break;
-                default:
-                    res.setHeader('Content-type', mime.get_file_mime_type(".html"));
-                    serveFile(res, defaultFile);
-                    return;
+                }
+                break;
+            }
+            if(!matched) {
+                res.setHeader('Content-type', mime.get_file_mime_type(".html"));
+                serveFile(res, defaultFile);
+                return;
             }
             //console.log(mimeType, path.extname(fileName));
             if(mimeType === null) {
                 fileNotFound(res);
                 return;
             }
-									
+
             let filePath = path.resolve(path.join(dir, fileName));
-			console.log(filePath);
+            //console.log(filePath);
             let truePath = path.resolve(dir);
             if(!filePath.startsWith(truePath)) {
                 fileNotFound(res);
                 return;
             }
 
+            //console.log(filePath);
             fs.stat(filePath, function(err, stats) {
                 let serveData = true;
                 if(!err && stats.isDirectory()) err = 1;
@@ -113,23 +129,60 @@ function Server(port, defaultFile) {
             });
         })
     };
-    let wss = new ws.Server({ noServer : true });
-    wss.on("connection", function(ws, request, connection_host) {
-        console.log(ws);
-        ws.on("close", function(code) {
+    self.wsServer = new ws.Server({
+        noServer : true,
+        httpServer: self.server
+    });
+    self.wsServer.on("connection", (connection, request, host) => {
+        connection.on("message", (message) => {
+            let args = JSON.parse(message);
+            if(typeof args !== "object") args = {};
+            let callback = (data) => {
+                try {
+                    if (typeof data === "string") data = JSON.parse(data);
+                }
+                catch(e) {
+                    data = {
+                        err: 1,
+                        message: "invalid_request"
+                    };
+                }
+                connection.send(JSON.stringify({
+                    id: args.id,
+                    data: data
+                }));
+            };
+
+            let err = 0;
+            try {
+                if(options.onWSRequest) options.onWSRequest(args.data, callback);
+                else err = 1;
+            }
+            catch(e) {
+                err = 1;
+                console.error(e);
+            }
+            if(err) {
+                callback({
+                    err: err,
+                    message: "invalid_request"
+                });
+            }
+        });
+        connection.on("close", function(code) {
         });
     });
 
     self.server.listen(port, "", () => {
         console.log(`Listening on ${port}`);
     }).on("upgrade", function(request, socket, head) {
-        wss.handleUpgrade(request, socket, head, function(ws) {
-            wss.emit("connection", ws, request, host_server);
+        self.wsServer.handleUpgrade(request, socket, head, function(ws) {
+            console.log("Upgraded connection to WS");
+            self.wsServer.emit("connection", ws, request, self.server);
         });
     });
 
     return self;
 };
 
-let file = process.argv.length > 2 ? process.argv[2] : "index.html";
-const app = Server(3001, file);
+module.exports = Server;

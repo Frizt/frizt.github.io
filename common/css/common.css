@@ -23,7 +23,7 @@ html {
 }
 
 .main_sidebar_content {
-    flex: 0 1 300px;
+    flex: 0 1 170px;
     background: black;
 }
 
@@ -35,6 +35,8 @@ html {
 
 .tabbable_content {
     display: none;
+    width: 100%;
+    height: 100%;
 }
 
 .tabbable_button {
@@ -46,6 +48,15 @@ html {
 
 .tabbable_selected {
     display: flex;
+}
+
+.button_theme {
+    justify-content: center;
+    align-items: center;
+    flex: 0 1 auto;
+    padding: 15px;
+    line-height: 25px;
+    align-self: center;
 }
 
 .styled_select {
@@ -121,6 +132,16 @@ html {
     height: 24px;
 }
 
+.virtual_list_header {
+    flex: 0 1 auto;
+    height: 25px;
+    overflow-x: hidden;
+}
+
+.virtual_list_header > * > * {
+    padding: 0 5px;
+}
+
 .virtual_list > .virtual_list_item {
     top: 0;
     left: 0;
@@ -135,4 +156,49 @@ html {
 .content_editable {
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+.styled_upload_input {
+    position: relative;
+}
+
+.styled_upload_input input {
+    width: 0;
+    height: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.styled_upload_input label {
+    flex: 0;
+    background: var(--styled_upload_input_background);
+}
+
+.upload_area {
+    position: relative;
+    margin: 50px;
+    margin-top: 0;
+    background: var(--upload_area_background);
+}
+
+.upload_area_child {
+    position: absolute;
+    width: calc(100% - 30px);
+    height: calc(100% - 30px);
+    top: 15px;
+    left: 15px;
+    font-size: 35px;
+    text-align: center;
+    justify-content: center;
+    border: 5px dashed rgba(255,255,255,0.3);
+    pointer-events: none;
+}
+
+.upload_area.dropped .upload_area_child {
+    display: none;
+}
+
+.row:not(.header) .cell > * {
+    width: 100%;
 }

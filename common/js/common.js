@@ -2,6 +2,9 @@
 
 var msPerFrame = 33.33;
 var refreshRate = 60;
+if(typeof requestAnimationFrame === "undefined") {
+    var requestAnimationFrame = requestAnimationFrame || function() {};
+}
 
 function nodeIsVisible(node) {
     return node.offsetHeight !== 0;
@@ -213,12 +216,49 @@ function anchorNodeToNode(anchorNode, node, options) {
     }
 }
 
+function roundTo(number, options) {
+    options = options || {};
+    var decimals = options.decimals || 2;
+    var divisor = 1;
+    for(var i = 0; i < decimals; i++) {
+        divisor *= 10;
+    }
+    return Math.round(number * divisor) / divisor;
+}
+
+function formatNumber(number, options) {
+    options = options || {};
+    if(!options.style) options.style = "metric";
+    var divisors = [1, ""];
+    var suffix = "";
+    switch(options.style) {
+        case "metric":
+            divisors = [1000, "k"];
+            break;
+        default:
+            console.log(`Unrecognized style "${options.style}"`);
+            return;
+    }
+    var suffix = "";
+    for(var i = divisors.length - 1; i >= 0; i--) {
+        var divisor = divisors[i];
+        if(number > divisor[0]) {
+            number /= divisor[0];
+        }
+    }
+    number = roundTo(number, {
+        decimals: options.decimals || 2
+    });
+    return number + suffix;
+}
+
 function VirtualList(inCont, options) {
     var options = options || {};
     var reflowRaf = null;
     var reflowScroll = 0;
     var reflowScrollOptions = {};
     var scrolled = false;
+    var header = null;
     var listCont = document.createElement("div");
     var scrollWrapper = document.createElement("div");
     listCont.classList.add("virtual_list_body");
@@ -226,6 +266,7 @@ function VirtualList(inCont, options) {
     scrollWrapper.appendChild(listCont);
     var self;
     self = {
+        plugins: {},
         data: [],
         cont: inCont,
         listCont: listCont,
@@ -233,10 +274,8 @@ function VirtualList(inCont, options) {
         viewHeight: 0,
         hiddenNodes: [],
         visibleNodes: {},
+        allNodes: [],
         buffer: 3,
-        getRowHeight: options.getRowHeight,
-        getNodeCount: options.getNodeCount,
-        getItem: options.getItem,
         getCleanNode: () => {
             var node = null;
             if(self.hiddenNodes.length > 0) {
@@ -245,9 +284,12 @@ function VirtualList(inCont, options) {
             }
             else {
                 node = self.onCreateNode();
+                node.classList.add("virtual_list_item");
+                self.allNodes.push(node);
                 node.style.position = "absolute";
                 //node.style.height = `${self.getRowHeight()}px`;
             }
+            node.topOfRow = null;
             return node;
         },
         getNodesInView: () => {
@@ -272,10 +314,28 @@ function VirtualList(inCont, options) {
             }
             self.reflow();
         },
+        injectRow: (node, top) => { // Keeps rows organized by their top so select works
+            var beforeNode = null;
+            var children = self.listCont.children;
+            for(var i = 0; i < children.length; i++) {
+                var child = children[i];
+                if(top < child.topOfRow) {
+                    beforeNode = child;
+                    break;
+                }
+            }
+            if(beforeNode !== null) {
+                self.listCont.insertBefore(node, beforeNode);
+            }
+            else {
+                self.listCont.appendChild(node);
+            }
+        },
         reflow: (reflowOptions) => {
             reflowOptions = reflowOptions || {};
             if(reflowRaf !== null) cancelAnimationFrame(reflowRaf);
             reflowRaf = requestAnimationFrame(() => {
+                if(!self.headerRow) self.buildHeader();
                 var nodeCount = self.getNodeCount();
                 var rowHeight = self.getRowHeight();
                 self.viewHeight = self.cont.offsetHeight;
@@ -321,31 +381,34 @@ function VirtualList(inCont, options) {
                             if(!self.visibleNodes[idx]) {
                                 node = self.getCleanNode();
                                 self.visibleNodes[idx] = {
-                                	node: node
+                                    node: node
                                 };
                             }
                             else {
                                 node = self.visibleNodes[idx].node;
                             }
-                            node.style.display = "";
+                            node.virtualListVisibleIdx = idx;
                             self.onFillNode(node, item, idx);
-                            node.style.top = `${idx * rowHeight}px`;
-                            if(node.parentNode !== self.listCont) {
-                                newNodes.push(node);
-                                self.listCont.appendChild(node);
-                            }
+                            var top = idx * rowHeight;
+                            node.style.top = `${top}px`;
+                            node.topOfRow = top;
+                            self.injectRow(node, top);
+                            newNodes.push(node);
                         }
                     }
                     time = new Date().getTime();
                     if(time - startTime >= maxTime) break;
                 }
-                appendNodes(self.listCont, newNodes);
+                for(var i = 0; i < newNodes.length; i++) {
+                    newNodes[i].style.display = "";
+                }
                 time = new Date().getTime();
                 var diff = time - startTime >= maxTime;
                 if(diff >= maxTime) {
                     console.log(`Took ${diff}ms to update, queuing another refresh`);
                     self.reflow(); //Queue another round of updates
                 }
+                if(options.syncColumnWidths) self.syncRowSizes();
             });
         },
         onScroll: () => {
@@ -367,14 +430,10 @@ function VirtualList(inCont, options) {
             self.setScroll(idx * self.getRowHeight(), scrollOptions);
         },
         onCreateNode: () => {
-            if(options.onCreateNode) return options.onCreateNode();
-            var node = document.createElement("div");
-            node.classList.add("virtual_list_item");
-            return node;
+            return self.execEvent("onCreateNode");
         },
         onFillNode: (itemNode, item, idx) => {
-            if(options.onFillNode) return options.onFillNode(itemNode, item, idx);
-            appendText(itemNode, item);
+            self.execEvent("onFillNode", itemNode, item, idx);
         },
         onNodeDelete: (itemNode, item, idx) => {
 
@@ -393,25 +452,160 @@ function VirtualList(inCont, options) {
             if(self.visibleNodes[idx]) node = self.visibleNodes[idx].node;
             return node;
         },
-        remove: (removeOptions) => {
-            if(options.onNodeRemove) {
-                var keys = Object.keys(self.visibleNodes);
-                for(var i = 0; i < keys.length; i++) {
-                    var item = self.visibleNodes[keys[i]];
-                    options.onNodeRemove(item.node);
+        syncRowSizes: () => {
+            var widths = [];
+            var minWidths = [];
+            var percs = [];
+            if(self.headerRow) {
+                var total = 0;
+                var children = self.headerRow.children;
+                for(var i = 0; i < children.length; i++) {
+                    var w = children[i].offsetWidth;
+                    total += w;
+                    widths.push(w);
+                    minWidths.push(children[i].children[0].offsetWidth);
                 }
-                for(var i = 0; i < self.hiddenNodes.length; i++) {
-                    options.onNodeRemove(item.node);
+                for(var i = 0; i < children.length; i++) {
+                    percs.push(Math.round(widths[i] / total * 100));
                 }
             }
+            var children = self.heightRow.children;
+            for(var i = 0; i < children.length; i++) {
+                var width = children[i].offsetWidth;
+                if(i >= widths.length) {
+                    minWidths.push(width);
+                    widths.push(width);
+                }
+                //else if(width > widths[i]) widths[i] = width;
+            }
+            for(var i = 0; i < self.allNodes.length; i++) {
+                var node = self.allNodes[i];
+                var children = node.children;
+                for(var j = 0; j < children.length; j++) {
+                    children[j].style.minWidth = minWidths[j];
+                    children[j].style.maxWidth = percs[j] +"%";
+                    children[j].style.width = percs[j] +"%";
+                }
+            }
+        },
+        remove: (removeOptions) => {
             removeOptions = removeOptions || {};
+            var keys = Object.keys(self.visibleNodes);
+            for(var i = 0; i < keys.length; i++) {
+                var item = self.visibleNodes[keys[i]];
+                self.execEvent("onNodeRemove", item.node);
+            }
+            for(var i = 0; i < self.hiddenNodes.length; i++) {
+                self.execEvent("onNodeRemove", item.node);
+            }
             domEventListener.removeEvent(scrollWrapper, "scroll", "vlist");
-            if(options.onRemove) options.onRemove(removeOptions);
+            self.execEvent("onRemove", removeOptions);
             if(removeOptions.removeFromParent) {
                 removeFromParent(self.cont);
             }
+        },
+        buildHeader: () => {
+            var header = self.execEvent("onBuildHeader");
+            if(header) {
+                header.classList.add("virtual_list_header");
+                var columns = header.children;
+                for(var i = 0; i < columns.length; i++) {
+                    var column = columns[i];
+                    var div = document.createElement("div");
+                    div.innerHTML = column.innerHTML;
+                    column.innerHTML = "";
+                    column.appendChild(div);
+                }
+                if(self.headerRow) removeFromParent(self.headerRow);
+                self.headerRow = header;
+                self.allNodes.push(header);
+                var children = self.cont.children;
+                if(children.length)
+                    self.cont.insertBefore(header, children[0]);
+                else
+                    self.cont.appendChild(header);
+
+                self.reflow({
+                    forceUpdate: true
+                });
+            }
+        },
+        events: {},
+        addEvent: (eventName, pluginName, event) => {
+            var e = {
+                eventName: eventName,
+                pluginName: pluginName,
+                event: event
+            };
+            self.events[eventName] = self.events[eventName] || [];
+            var eventList = self.events[eventName];
+            for(var i = 0; i < eventList.length; i++) {
+                if(eventList[i].pluginName === pluginName) {
+                    eventList.splice(i, 1);
+                    break;
+                }
+            }
+            eventList.splice(0, 0, e);
+        },
+        execEvent: (eventName, ...args) => {
+            var result = null;
+            var events = self.events[eventName];
+            if(events) {
+                for(var i = 0; i < events.length; i++) {
+                    var eResults = events[i].event.apply(this, args);
+                    if(typeof eResults === "object") {
+                        result = eResults.result;
+                        if(typeof eResults.continue !== "undefined" && !eResults.continue)
+                            break;
+                    }
+                    else {
+                        break;
+                    }
+                }
+            }
+            else {
+                //console.error(`No event implemented for ${eventName}`, self);
+            }
+            return result;
+        },
+        listIsVisible: () => {
+            return nodeIsVisible(self.cont);
+        },
+        toggleDisplay: (toggle) => {
+            self.cont.style.display = toggle ? "" : "none";
+            self.execEvent("toggleDisplay", toggle);
+        },
+        getItem: (idx) => {
+            return self.execEvent("getItem", idx);
+        },
+        getNodeCount: () => {
+            return self.execEvent("getNodeCount");
+        },
+        addPlugin: (pluginName, pluginData) => {
+            if(self.hasPlugin(pluginName, true)) return false;
+            self.plugins[pluginName] = pluginData;
+            return true;
+        },
+        hasPlugin: (pluginName, throwErrorIfExists) => {
+            var hasPlugin = !!self.plugins[pluginName];
+            if(throwErrorIfExists && hasPlugin) {
+                console.error(`Added plugin ${pluginName} twice`, vlist);
+                return false;
+            }
+            return hasPlugin;
         }
     };
+    self.addEvent("onFillNode", "default", (itemNode, item, idx) => {
+        appendText(itemNode, item);
+    });
+    self.addEvent("onCreateNode", "default", () => {
+        var node = document.createElement("div");
+        return {
+            continue: false,
+            result: node
+        };
+    });
+
     var node = self.getCleanNode();
     node.style.opacity = 0;
     node.style.flexGrow = 1;
@@ -436,120 +630,63 @@ function VirtualList(inCont, options) {
         };
     }
     domEventListener.addEvent(scrollWrapper, "scroll", "vlist", self.onScroll);
-    if(!self.getNodeCount) console.error("VirtualList: Node count not implemented", self.cont);
-    if(!self.getItem) console.error("VirtualList: Get item not implemented", self.cont);
     self.cont.classList.add("virtual_list");
     self.cont.appendChild(scrollWrapper);
     return self;
 }
 
-function ValueVirtualList(inCont, options) {
+function AddValueVirtualListPlugin(vlist, options) {
+    if(vlist.hasPlugin("valueList", true)) return false;
+
     options = options || {};
-    var vlist;
     var self;
     self = {
-        list: [],
-        getItem: (idx) => {
-            return self.list[idx];
-        },
-        getNodeCount: () => {
-            return self.list.length;
-        },
-        setList: (newList) => {
-            self.list = newList;
-            vlist.reflow({
-                forceNodeRefresh: true
-            });
-        },
-        toggleListDisplay: (toggle) => {
-            vlist.cont.style.display = toggle ? "" : "none";
-        },
-        listIsVisible: () => {
-            return nodeIsVisible(vlist.cont);
-        }
+        vlist: vlist,
+        list: []
     };
 
-    if(options.getItem) self.getItem = options.getItem;
-    options.getItem = self.getItem;
-    if(options.getNodeCount) self.getNodeCount = options.getNodeCount;
-    options.getNodeCount = self.getNodeCount;
-
-    vlist = VirtualList(inCont, options);
-    vlist.valueVirtualList = self;
-    return vlist;
-}
-
-function roundTo(number, options) {
-    options = options || {};
-    var decimals = options.decimals || 2;
-    var divisor = 1;
-    for(var i = 0; i < decimals; i++) {
-        divisor *= 10;
-    }
-    return Math.round(number * divisor) / divisor;
-}
-
-function formatNumber(number, options) {
-    options = options || {};
-    if(!options.style) options.style = "metric";
-    var divisors = [1, ""];
-    var suffix = "";
-    switch(options.style) {
-        case "metric":
-            divisors = [1000, "k"];
-            break;
-        default:
-            console.log(`Unrecognized style "${options.style}"`);
-            return;
-    }
-    var suffix = "";
-    for(var i = divisors.length - 1; i >= 0; i--) {
-        var divisor = divisors[i];
-        if(number > divisor[0]) {
-            number /= divisor[0];
-        }
-    }
-    number = roundTo(number, {
-        decimals: options.decimals || 2
+    self.vlist.addPlugin("valueList", self);
+    self.vlist.addEvent("setList", "valueList", (newList) => {
+        self.list = newList;
+        self.vlist.reflow({
+            forceNodeRefresh: true
+        });
+        return { continue: false };
     });
-    return number + suffix;
+    self.vlist.addEvent("getItem", "valueList", (idx) => {
+        var item = null;
+        if(idx >= 0 && idx < self.list.length) item = self.list[idx];
+        return { result: item, continue: false };
+    });
+    self.vlist.addEvent("getNodeCount", "valueList", () => {
+        return { result: self.list.length,  continue: false };
+    });
+    self.vlist.setList = (newList) => {
+        self.vlist.execEvent("setList", newList);
+    };
+    return self.vlist;
 }
 
-function SelectableList(node, options) {
+function AddSelectableVirtualListPlugin(vlist, options) {
+    if(vlist.hasPlugin("selectableList", true)) return false;
+
     options = options || {};
     var self;
     var valueList = {};
-    var noEvent = true;
-    //if(!options.getRowHeight) {
-    //	console.error("No getRowHeight passed in", node);
-    //}
 
-    node.setAttribute("tabindex", 1);
-    node.classList.add("selectable_list");
     var disableMouseOver = false;
     var disableMouseOverTimeout = null;
 
     self = {
         eventId: 0,
         rowHeight: 16,
-        cont: node,
         selectedIdx: 0,
-        vlist: ValueVirtualList(node, {
-            onCreateNode: options.onCreateNode,
-            onFillNode: options.onFillNode,
-            getRowHeight: options.getRowHeight,
-            onRemove: () => {
-                if(options.onRemove) options.onRemove();
-                domEventListener.removeEvent(self.cont, "click", "styledSelect");
-                domEventListener.removeEvent(self.cont, "keydown", "styledSelect");
-                domEventListener.removeEvent(self.cont, "mouseover", "styledSelect");
-            }
-        }),
+        vlist: vlist,
         selectItem: (idx, selectOptions) => {
             selectOptions = selectOptions || {};
             var node = self.vlist.idxToNode(self.selectedIdx);
             if(node) node.classList.remove("selected");
-            self.selectedIdx = Math.max(0, Math.min(idx, self.vlist.valueVirtualList.getNodeCount() - 1));
+            self.selectedIdx = Math.max(0, Math.min(idx, self.vlist.getNodeCount() - 1));
             node = self.vlist.idxToNode(self.selectedIdx);
             if(node) node.classList.add("selected");
             if(typeof selectOptions.scrollTo !== "undefined" && selectOptions.scrollTo) {
@@ -569,9 +706,9 @@ function SelectableList(node, options) {
                 scrollTo: true
             });
         },
-        onMouseover: (e) => {
+        onRowMouseover: (e) => {
             if(!disableMouseOver) {
-                var visible = self.vlist.valueVirtualList.listIsVisible();
+                var visible = self.vlist.listIsVisible();
                 if(visible) {
                     var target = getFirstParentWithClass(e.target, "virtual_list_item", {
                         includeChild: true
@@ -587,8 +724,8 @@ function SelectableList(node, options) {
                 }
             }
         },
-        onKey: (e) => {
-            var isVisible = self.vlist.valueVirtualList.listIsVisible();
+        onRowKey: (e) => {
+            var isVisible = self.vlist.listIsVisible();
             switch(e.keyCode) {
                 case 33: // pgup
                 case 34: // pgdown
@@ -604,7 +741,7 @@ function SelectableList(node, options) {
                     break;
                 case 35: // end
                     if(isVisible) {
-                        self.selectItem(self.vlist.valueVirtualList.getNodeCount(), {
+                        self.selectItem(self.vlist.getNodeCount(), {
                             scrollTo: true
                         });
                     }
@@ -627,7 +764,7 @@ function SelectableList(node, options) {
                     }
                     break;
                 case 13: // Enter
-                    var visible = self.vlist.valueVirtualList.listIsVisible();
+                    var visible = self.vlist.listIsVisible();
                     if(visible) {
                         var item = self.vlist.idxToItem(self.selectedIdx);
                         if(item) {
@@ -639,9 +776,6 @@ function SelectableList(node, options) {
             if(options.onKey) options.onKey(e);
             self.pauseMouseover();
         },
-        setList: (values) => {
-            self.vlist.valueVirtualList.setList(values);
-        },
         pauseMouseover: () => {
             disableMouseOver = true;
             clearTimeout(disableMouseOverTimeout);
@@ -649,34 +783,53 @@ function SelectableList(node, options) {
                 disableMouseOver = false;
             }, 200);
         },
-        onClick: (e) => {
-            var visible = self.vlist.valueVirtualList.listIsVisible();
+        onRowClick: (e) => {
+            var visible = self.vlist.listIsVisible();
             if(visible) {
                 var target = getFirstParentWithClass(e.target, "virtual_list_item", {
                     includeChild: true
                 });
                 if(target) {
-                    var item = self.vlist.pointToItem(target.offsetLeft, target.offsetTop);
+                    var item = self.vlist.getItem(target.virtualListVisibleIdx);
                     if(item) {
                         if(options.onItemSelect) options.onItemSelect(e, item);
-                        //self.cont.focus();
+                    }
+                }
+                if(!target) {
+                    target = getFirstParentWithClass(e.target, "virtual_list_header", {
+                        includeChild: true
+                    });
+                    if(target) {
+                        console.log("clicked on header");
                     }
                 }
                 if(options.onClick) options.onClick(e);
             }
-        },
-        setList: (values) => {
-            self.vlist.valueVirtualList.setList(values);
         }
     };
-    self.vlist.selectableList = self;
-    domEventListener.addEvent(self.cont, "dblclick", "styledSelect", self.onClick);
-    domEventListener.addEvent(self.cont, "click", "styledSelect", self.onClick);
-    domEventListener.addEvent(self.cont, "keydown", "styledSelect", self.onKey);
-    domEventListener.addEvent(self.cont, "mouseover", "styledSelect", self.onMouseover);
-    noEvent = false;
-    return self;
+    self.vlist.addPlugin("selectableList", self);
+
+    self.vlist.cont.setAttribute("tabindex", 1);
+    self.vlist.cont.classList.add("selectable_list");
+
+    self.vlist.addEvent("onRemove", "selectableList", (idx) => {
+        domEventListener.removeEvent(self.vlist.cont, "click", "styledSelect");
+        domEventListener.removeEvent(self.vlist.cont, "keydown", "styledSelect");
+        domEventListener.removeEvent(self.vlist.cont, "mouseover", "styledSelect");
+    });
+    domEventListener.addEvent(self.vlist.cont, "dblclick", "styledSelect", self.onRowClick);
+    domEventListener.addEvent(self.vlist.cont, "click", "styledSelect", self.onRowClick);
+    domEventListener.addEvent(self.vlist.cont, "keydown", "styledSelect", self.onRowKey);
+    domEventListener.addEvent(self.vlist.cont, "mouseover", "styledSelect", self.onRowMouseover);
+    return self.vlist;
 }
+
+function SelectableList(cont, options) {
+    var vlist = VirtualList(cont, options);
+    AddValueVirtualListPlugin(vlist);
+    return AddSelectableVirtualListPlugin(vlist, options);
+}
+
 
 function getViewportSize() {
     return {
@@ -717,46 +870,45 @@ function StyledSelect(node, options) {
     var disableMouseOver = false;
     var disableMouseOverTimeout = null;
 
+    var vlist = SelectableList(listDiv, {
+        onFillNode: (itemNode, item, idx) => {
+            appendText(itemNode, item.text);
+            if(self.selectableList.selectedIdx === idx) {
+                itemNode.classList.add("selected");
+            }
+            else {
+                itemNode.classList.remove("selected");
+            }
+        },
+        onKey: (e) => {
+            switch(e.keyCode) {
+                case 13: // Enter
+                    var item = self.selectableList.vlist.idxToItem(self.selectableList.selectedIdx);
+                    if(item) {
+                        self.setValue(item.value);
+                    }
+                    self.hide();
+                    self.cont.focus();
+                    break;
+            }
+        },
+        onClick: (e) => {
+            self.cont.focus();
+        },
+        onItemSelect: (e, item) => {
+            self.setValue(item.value);
+            self.cont.focus();
+        }
+    });
+
     self = {
         eventId: 0,
         ignoreGlobal: false,
         rowHeight: 0,
         cont: styledSelectDiv,
-        selectableList: SelectableList(listDiv, {
-            onFillNode: (itemNode, item, idx) => {
-                appendText(itemNode, item.text);
-                if(self.selectableList.selectedIdx === idx) {
-                    itemNode.classList.add("selected");
-                }
-                else {
-                    itemNode.classList.remove("selected");
-                }
-            },
-            //getRowHeight: () => {
-            //	return self.rowHeight;
-            //},
-            onKey: (e) => {
-                switch(e.keyCode) {
-                    case 13: // Enter
-                        var item = self.selectableList.vlist.idxToItem(self.selectableList.selectedIdx);
-                        if(item) {
-                            self.setValue(item.value);
-                        }
-                        self.hide();
-                        self.cont.focus();
-                        break;
-                }
-            },
-            onClick: (e) => {
-                self.cont.focus();
-            },
-            onItemSelect: (e, item) => {
-                self.setValue(item.value);
-                self.cont.focus();
-            }
-        }),
-        onKey: (e) => {
-            var isVisible = self.selectableList.vlist.valueVirtualList.listIsVisible();
+        vlist: vlist,
+        dropdownOnKey: (e) => {
+            var isVisible = self.vlist.listIsVisible();
             switch(e.keyCode) {
                 case 38: // keyup
                 case 40: // keydown
@@ -774,25 +926,25 @@ function StyledSelect(node, options) {
                     }
                     break;
             }
-            if(isVisible) self.selectableList.onKey(e);
+            if(isVisible) self.vlist.plugins.selectableList.onKey(e);
         },
-        onClick: (e) => {
-            var visible = self.selectableList.vlist.valueVirtualList.listIsVisible();
+        dropdownOnClick: (e) => {
+            var visible = self.vlist.listIsVisible();
             if(!visible) {
                 self.show();
                 self.ignoreGlobal = true;
             }
         },
         hide: () => {
-            self.selectableList.vlist.valueVirtualList.toggleListDisplay(false);
+            self.vlist.toggleListDisplay(false);
             domEventListener.removeEvent(document, "click", self.eventId);
             self.eventId = 0;
             self.ignoreGlobal = false;
         },
         show: () => {
-            self.selectableList.pauseMouseover();
-            self.selectableList.vlist.scrollToIdx(self.selectableList.selectedIdx);
-            self.selectableList.vlist.valueVirtualList.toggleListDisplay(true);
+            self.vlist.plugins.selectableList.pauseMouseover();
+            self.vlist.scrollToIdx(self.selectableList.selectedIdx);
+            self.vlist.toggleListDisplay(true);
             anchorNodeToNode(self.cont, listDiv, {
                 keepOnScreen: true
             });
@@ -805,7 +957,7 @@ function StyledSelect(node, options) {
                     self.hide();
                 }
             });
-            self.selectableList.vlist.reflow();
+            self.vlist.reflow();
         },
         setValue: (value) => {
             setSelectValue(node, value);
@@ -821,18 +973,19 @@ function StyledSelect(node, options) {
                 var value = values[i];
                 valueList[values.value] = value.text;
             }
-            self.selectableList.vlist.valueVirtualList.setList(values);
+            self.vlist.plugins.valueList.setList(values);
         }
     };
-    domEventListener.addEvent(self.cont, "click", "styledSelect", self.onClick);
-    domEventListener.addEvent(self.cont, "keydown", "styledSelect", self.onKey);
+    domEventListener.addEvent(self.cont, "click", "styledSelect", self.dropdownOnClick);
+    domEventListener.addEvent(self.cont, "keydown", "styledSelect", self.dropdownOnKey);
     self.setValue(self.getValue());
+    self.vlist.plugins.styledSelect = self;
     noEvent = false;
     requestAnimationFrame(() => {
         addChildAfter(node, styledSelectDiv);
         self.rowHeight = styledSelectDiv.offsetHeight - 2;
     });
-    return self;
+    return self.vlist;
 }
 
 function SearchSelect(node, options) {
@@ -847,10 +1000,19 @@ function TabNav(options) {
         var target = getFirstParentWithClass(e.target, "tabbable_button", {
             includeChild: true
         });
-        console.log(e);
-        self.setTabVisible(target.getAttribute("data-tabbable_group"), target.getAttribute("data-tabbable_name"));
+        if(!target.getAttribute("data-tabbable_disabled")) {
+            var group = target.getAttribute("data-tabbable_group");
+            var name = target.getAttribute("data-tabbable_name");
+            if(options.onClick) {
+                if(options.onClick(e, group, name) === false) {
+                    return;
+                }
+            }
+            self.setTabVisible(group, name, e);
+        }
     };
     self = {
+        buttons: {},
         selectDefaultTab: () => {
             var tabItems = document.querySelectorAll(".tabbable_button[data-tabbable_default]");
             for(var i = 0; i < tabItems.length; i++) {
@@ -859,7 +1021,26 @@ function TabNav(options) {
                 self.setTabVisible(tab.getAttribute("data-tabbable_group"), tab.getAttribute("data-tabbable_name"));
             }
         },
-        setTabVisible: (tabGroup, tabName) => {
+        toggleButton: (button, toggle) => {
+            button.classList.toggle("disabled", !toggle);
+            if(toggle) {
+                button.removeAttribute("data-tabbable_disabled");
+            }
+            else {
+                button.setAttribute("data-tabbable_disabled", "1");
+            }
+        },
+        toggleButtons: (tabGroup, tabName, toggle) => {
+            var buttons = document.querySelectorAll(`.tabbable_button[data-tabbable_group="${tabGroup}"]`);
+            for(var i = 0; i < buttons.length; i++) {
+                var button = buttons[i];
+                var name = button.getAttribute("data-tabbable_name");
+                if(name === tabName) {
+                    self.toggleButton(button, toggle);
+                }
+            }
+        },
+        setTabVisible: (tabGroup, tabName, e) => {
             var tabItems = document.querySelectorAll(`.tabbable_content[data-tabbable_group="${tabGroup}"], .tabbable_button[data-tabbable_group="${tabGroup}"]`);
             for(var i = 0; i < tabItems.length; i++) {
                 var tab = tabItems[i];
@@ -867,15 +1048,15 @@ function TabNav(options) {
                 tab.classList.toggle("tabbable_selected", tab.getAttribute("data-tabbable_name") === tabName);
             }
             history.pushState(null, tabName);
-            self.onTabChange(tabName);
+            self.onTabChange(tabGroup, tabName, e);
         },
         setTabFromUrl: (url) => {
             console.error("Not implemented");
             //var segments = url.split("/");
             //var tables
             //for(var i = 0; i < segments.length; i++) {
-            //	var idx = segments.length - i - 1;
-            //	var parentTabbables = getParentsWithClass(segments[i], "tabbable_button");
+            //  var idx = segments.length - i - 1;
+            //  var parentTabbables = getParentsWithClass(segments[i], "tabbable_button");
             //}
         },
         setupBindings: () => {
@@ -885,8 +1066,8 @@ function TabNav(options) {
                 domEventListener.addEvent(tab, "click", "tab", tabClickCallback);
             }
         },
-        onTabChange: (url) => {
-            if(options.onTabChange) options.onTabChange(url);
+        onTabChange: (tabGroup, tabName, e) => {
+            if(options.onTabChange) options.onTabChange(tabGroup, tabName, e);
         }
     };
     return self;
@@ -1042,6 +1223,239 @@ function DomEventListener() {
             }
         }
     };
+    return self;
+}
+
+function CSVToJson(csvText, options) {
+    csvText = csvText.trim();
+    options = options || {};
+    var keys = [];
+    var json = [];
+    var lines = csvText.split("\n");
+    for(var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var entry = {};
+        var parts = line.split(options.delimiter || ",");
+        if(i === 0) {
+            for(var j = 0; j < parts.length; j++) {
+                var val = parts[j].trim();
+                if(options.lowercaseEverything) val = val.toLowerCase();
+                keys.push(val);
+            }
+        }
+        else {
+            var obj = {};
+            for(var j = 0; j < keys.length; j++) {
+                if(j >= parts.length) break;
+                var val = parts[j].trim();
+                if(options.lowercaseEverything) val = val.toLowerCase();
+                obj[keys[j]] = val;
+            }
+            json.push(obj);
+        }
+    }
+    return json;
+}
+
+function FileUploader(input, uploadArea, options) {
+    options = options || {};
+    var self;
+    var dragOver = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        uploadArea.classList.add("hover");
+    };
+    var dragLeave = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        uploadArea.classList.remove("hover");
+    };
+    var drop = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        self.handleFiles(files);
+        uploadArea.classList.remove("hover");
+    };
+    self = {
+        list: null,
+        files: [],
+        init: () => {
+            self.list = SelectableList(uploadArea, options.listOptions);
+            self.list.addEvent("onFillNode", "fileUploader", (itemNode, item, idx) => {
+                appendText(itemNode, item.name);
+            });
+            self.setupBindings();
+        },
+        setupBindings: () => {
+            var nodes = [
+                uploadArea,
+                input
+            ];
+            if(input.nextSibling) {
+                var next = input.nextElementSibling;
+                if(next.tagName === "LABEL" && next.getAttribute("for") === input.id) {
+                    nodes.push(next);
+                }
+            }
+            for(var i = 0; i < nodes.length; i++) {
+                var node = nodes[i];
+                console.log(node);
+                node.addEventListener("dragenter", dragOver, false);
+                node.addEventListener("dragover", dragOver, false);
+                node.addEventListener("dragleave", dragLeave, false);
+                node.addEventListener("drop", drop, false);
+            }
+            input.addEventListener("change", () => {
+                self.handleFiles(input.files);
+            }, false);
+        },
+        handleFiles: (files) => {
+            var list = [];
+            for(var i = 0; i < files.length; i++) {
+                if(!files[i].type.startsWith("text/")) continue;
+                list.push(files[i]);
+            }
+            self.setList(list);
+        },
+        setList: (files) => {
+            var list = new Array(files.length);
+            input.classList.toggle("dropped", files.length > 0);
+            uploadArea.classList.toggle("dropped", files.length > 0);
+            var completed = 0;
+            var upateListDebounce = null;
+            for(var i = 0; i < files.length; i++) {
+                list[i] = "";
+                var file = files[i];
+                const reader = new FileReader();
+                reader.onloadend = (e) => {
+                    completed++;
+                    if(completed >= files.length) {
+                        if(options.onUploadFinish) {
+                            options.onUploadFinish(list);
+                        }
+                    }
+                };
+                ((name, idx) => {
+                    reader.onload = (e) => {
+                        list[idx] = {
+                            name: name,
+                            data: e.target.result
+                        };
+                        if(!upateListDebounce) {
+                            upateListDebounce = setTimeout(() => {
+                                self.list.setList(list);
+                                self.files = list;
+                                upateListDebounce = null;
+                            }, 50);
+                        }
+                    };
+                })(file.name, i);
+                reader.readAsBinaryString(files[i]);
+            }
+        }
+    };
+    self.init();
+    return self;
+}
+
+
+function WebSocketFactory(url, options) {
+    options = options || {};
+    var timeout = null;
+    var start = 0;
+    var self;
+    self = {
+        context: 0,
+        contextList: {},
+        buffer: [],
+        connected: false,
+        connecting: false,
+        setupSocket: () => {
+            console.log("Created new socket");
+            var socket = new WebSocket(url);
+            var interval = () => {
+                if(socket.readyState !== 0 && socket.readyState !== 1) { 
+                    self.connecting = false;
+                    console.log("Websocket connection failed");
+                }
+                else if(socket.readyState === 1) {
+                    self.connecting = false;
+                    console.log("Websocket connected");
+                    self.connected = true;
+                    if(self.connected) {
+                        for (var i = 0; i < self.buffer.length; i++) {
+                            self.sendId(self.buffer[i]);
+                        }
+                        self.buffer = [];
+                    }
+                }
+                else if(new Date().getTime() - start < 5000) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(interval, 1);
+                }
+                else {
+                    self.connecting = false;
+                    console.log("Websocket connection timed out");
+                }
+            };
+            socket.onopen = function() {
+                console.log("Websocket open");
+                clearTimeout(timeout);
+                start = new Date().getTime();
+                timeout = setTimeout(interval, 1);
+            };
+            socket.onmessage = function(message) {
+                var packet = JSON.parse(message.data);
+                var id = "" + packet.id;
+                var data = packet.data;
+                var context = self.contextList[id]
+                if (context) {
+                    if(context.callback) context.callback(data || {err:1});
+                    delete self.contextList[id];
+                }
+            };
+            socket.onclose = socket.onclose = function() {
+                console.log("Websocket closed");
+                self.connected = false;
+                self.connecting = false;
+            };
+            self.socket = socket;
+        },
+        sendId: (id) => {
+            var context = self.contextList[id];
+            if(context) {
+                var wrapped = {
+                    data: {
+                        method: context.method,
+                        args: context.args
+                    },
+                    id: id
+                };
+                self.socket.send(JSON.stringify(wrapped));
+            }
+        },
+        send: (method, args, callback) => {
+            var id = ++self.context;
+            self.contextList["" + id] = {
+                method: method,
+                args: args,
+                callback: callback
+            };
+            if(self.connected) {
+                self.sendId(id);
+            }
+            else {
+                self.buffer.push(id);
+                if(!self.connecting) {
+                    self.connecting = true;
+                    self.setupSocket();
+                }
+            }
+        }
+    };
+    self.setupSocket();
     return self;
 }
 
