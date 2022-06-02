@@ -296,12 +296,17 @@ function VirtualList(inCont, options) {
             var nodes = [];
             var rowCount = self.getNodeCount();
             var rowHeight = self.getRowHeight();
-            var topIdx = Math.floor(reflowScroll / rowHeight);
-            for(var i = 0; i < Math.floor(self.viewHeight / rowHeight) + 1 + self.buffer * 2; i++) {
-                var idx = topIdx + i - self.buffer;
-                if(idx < 0) continue;
-                if(idx >= rowCount) break;
-                nodes.push(idx);
+            if (rowHeight > 0) {
+                var topIdx = Math.floor(reflowScroll / rowHeight);
+                for(var i = 0; i < Math.floor(self.viewHeight / rowHeight) + 1 + self.buffer * 2; i++) {
+                    var idx = topIdx + i - self.buffer;
+                    if(idx < 0) continue;
+                    if(idx >= rowCount) break;
+                    nodes.push(idx);
+                }
+            }
+            else {
+                console.error("Warning: vlist row height is zero");
             }
             return nodes;
         },
@@ -1324,7 +1329,7 @@ function FileUploader(input, uploadArea, options) {
             input.classList.toggle("dropped", files.length > 0);
             uploadArea.classList.toggle("dropped", files.length > 0);
             var completed = 0;
-            var upateListDebounce = null;
+            var updateListDebounce = null;
             for(var i = 0; i < files.length; i++) {
                 list[i] = "";
                 var file = files[i];
@@ -1343,11 +1348,11 @@ function FileUploader(input, uploadArea, options) {
                             name: name,
                             data: e.target.result
                         };
-                        if(!upateListDebounce) {
-                            upateListDebounce = setTimeout(() => {
+                        if(!updateListDebounce) {
+                            updateListDebounce = setTimeout(() => {
                                 self.list.setList(list);
                                 self.files = list;
-                                upateListDebounce = null;
+                                updateListDebounce = null;
                             }, 50);
                         }
                     };
