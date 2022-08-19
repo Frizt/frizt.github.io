@@ -1513,6 +1513,7 @@ function prettyPrintObject(...args) {
     let ss = "";
     for (let i = 0; i < args.length; i++) add(0, args[i]);
     while (iter.length) {
+        let clean = [];
         let pop = iter.splice( 0, 1)[0];
         let s = `${pop.indent > 0 ? `${new Array(pop.indent * 4).join( " ")}` : ""}${pop.key !== null ? `${pop.key}: ` : ""}`;
         switch (typeof pop.item) {
@@ -1525,10 +1526,12 @@ function prettyPrintObject(...args) {
                 s += "function";
                 break;
             case "object":
-                let ty = pop.item.constructor.name;
-                let isArray = ty === "Array";
+                let sp = ("" + pop.item).replace("[", "").replace("]", "").split(" ");
+                let ty = sp[sp.length - 1];
+                let isArray = pop.item instanceof Array;
                 s += `[${ty}] ${isArray ? "[" : "{"}`;
                 if (!pop.item.UNIQUE_ID) {
+                    clean.push(typeof pop.item);
                     add(pop.indent, `${isArray ? "]" : "}"}`, null, true, false);
 
                     let keys = Object.keys(pop.item);
@@ -1542,15 +1545,21 @@ function prettyPrintObject(...args) {
                     pop.item.UNIQUE_ID = counter++;
                     if (keyCount && !isArray) add(pop.indent + 0.5, "-Members-", null, true, false);
 
-                    if (ty !== "Object" && !isArray && typeof pop.item.constructor.prototype !== "undefined") {
+                    if (!isArray && ty !== "Object" && ty !== "Array") {
                         let proto = Object.getPrototypeOf(pop.item);
-                        keys = Object.getOwnPropertyNames(proto);
-                        add(pop.indent + 1, "", null, true, false); // Newline
-                        for (let i = 0; i < keys.length; i++) {
-                            let key = keys[keys.length - i - 1];
-                            add(pop.indent + 1, proto[key], key, true, false);
+                        let protoCount = 0;
+                        while (proto && proto != Object && proto.constructor !== Function) {
+                            keys = Object.getOwnPropertyNames(proto);
+                            for (let i = 0; i < keys.length; i++) {
+                                let key = keys[keys.length - i - 1];
+                                if(!proto[key]) continue;
+
+                                add(pop.indent + 1, proto[key], key, true, false);
+                                protoCount++;
+                            }
+                            proto = Object.getPrototypeOf( proto.constructor);
                         }
-                        add(pop.indent + 0.5, "-Prototype-", null, true, false);
+                        if (protoCount) add(pop.indent + 0.5, "-Prototype-", null, true, false);
                     }
                 }
                 else {
@@ -1562,6 +1571,9 @@ function prettyPrintObject(...args) {
                 break;
         }
         ss += `${s}${iter.length ? "\n" : ""}`;
+        for (let i = 0; i < clean.length; i++) {
+            delete clean[i].UNIQUE_ID;
+        }
     }
     console.log_(ss);
 }
