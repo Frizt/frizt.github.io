@@ -6,6 +6,10 @@ if(typeof requestAnimationFrame === "undefined") {
     var requestAnimationFrame = requestAnimationFrame || function() {};
 }
 
+function toggleNode(node, toggle) {
+    node.style.display = toggle ? "" : "none";
+}
+
 function nodeIsVisible(node) {
     return node.offsetHeight !== 0;
 }
@@ -181,6 +185,7 @@ function getNodeBounds(node) {
 
     var rect = node.getBoundingClientRect();
     rect.fullHeight = Math.ceil(node.offsetHeight + margin);
+    rect.fullWidth = Math.ceil(node.offsetWidth + margin);
     return rect;
 }
 
@@ -270,8 +275,8 @@ function VirtualList(inCont, options) {
         data: [],
         cont: inCont,
         listCont: listCont,
-        height: 0,
-        viewHeight: 0,
+        row: 0,
+        viewDimensions: 0,
         hiddenNodes: [],
         visibleNodes: {},
         allNodes: [],
@@ -287,7 +292,7 @@ function VirtualList(inCont, options) {
                 node.classList.add("virtual_list_item");
                 self.allNodes.push(node);
                 node.style.position = "absolute";
-                //node.style.height = `${self.getRowHeight()}px`;
+                //node.style.height = `${self.getRowDimensions().height}px`;
             }
             node.topOfRow = null;
             return node;
@@ -295,10 +300,15 @@ function VirtualList(inCont, options) {
         getNodesInView: () => {
             var nodes = [];
             var rowCount = self.getNodeCount();
-            var rowHeight = self.getRowHeight();
-            if (rowHeight > 0) {
-                var topIdx = Math.floor(reflowScroll / rowHeight);
-                for(var i = 0; i < Math.floor(self.viewHeight / rowHeight) + 1 + self.buffer * 2; i++) {
+            var rowDimensions = self.getRowDimensions();
+            if (rowDimensions.height > 0 && rowDimensions.width > 0) {
+                var itemsPerRow = Math.floor(self.viewDimensions.width / rowDimensions.width);
+                var topIdx = Math.floor(reflowScroll / rowDimensions.height * itemsPerRow);
+                var endIndex = Math.floor(self.viewDimensions.height / rowDimensions.height) + 1 + self.buffer * 2;
+                endIndex *= self.viewDimensions.width / rowDimensions.width;
+
+//                console.log(topIdx + " " + endIndex);
+                for(var i = 0; i < endIndex; i++) {
                     var idx = topIdx + i - self.buffer;
                     if(idx < 0) continue;
                     if(idx >= rowCount) break;
@@ -319,12 +329,18 @@ function VirtualList(inCont, options) {
             }
             self.reflow();
         },
-        injectRow: (node, top) => { // Keeps rows organized by their top so select works
+        injectRow: (node, left, top) => { // Keeps rows organized by their top so select works
             var beforeNode = null;
             var children = self.listCont.children;
             for(var i = 0; i < children.length; i++) {
                 var child = children[i];
-                if(top < child.topOfRow) {
+                if(top === child.topOfRow) {
+                    if(left < child.leftOfRow) {
+                        beforeNode = child;
+                        break;
+                    }
+                }
+                else if(top < child.topOfRow) {
                     beforeNode = child;
                     break;
                 }
@@ -342,16 +358,21 @@ function VirtualList(inCont, options) {
             reflowRaf = requestAnimationFrame(() => {
                 if(!self.headerRow) self.buildHeader();
                 var nodeCount = self.getNodeCount();
-                var rowHeight = self.getRowHeight();
-                self.viewHeight = self.cont.offsetHeight;
+                var rowDimensions = self.getRowDimensions();
+                self.viewDimensions = {
+                    width: self.cont.offsetWidth,
+                    height: self.cont.offsetHeight
+                };
                 if(scrolled) {
-                    reflowScrollOptions.viewHeight = self.viewHeight;
-                    reflowScrollOptions.itemSize = rowHeight;
+                    reflowScrollOptions.viewHeight = self.viewDimensions.height;
+                    reflowScrollOptions.itemSize = rowDimensions.height;
                     smartScroll(scrollWrapper, reflowScroll, reflowScrollOptions);
                     scrolled = false;
                     reflowScroll = scrollWrapper.scrollTop;
                 }
-                self.height = nodeCount * rowHeight;
+                var itemsPerRow = Math.floor(self.viewDimensions.width / rowDimensions.width);
+                if(!itemsPerRow) itemsPerRow = 1;
+                self.height = Math.ceil(nodeCount / itemsPerRow) * rowDimensions.height;
                 self.listCont.style.height = `${self.height}px`;
 
                 var startTime = new Date().getTime();
@@ -377,8 +398,11 @@ function VirtualList(inCont, options) {
                     if(time - startTime >= maxTime) break;
                 }
                 var newNodes = [];
+                var xWidth = self.viewDimensions.width / (itemsPerRow);
                 for(var i = 0; i < visibleNodes.length; i++) {
                     var idx = visibleNodes[i];
+                    var xIdx = idx % itemsPerRow;
+                    var yIdx = Math.floor(idx / itemsPerRow);
                     if(!self.visibleNodes[idx] || reflowOptions.forceUpdate) {
                         var item = self.getItem(idx);
                         if(item !== null) {
@@ -394,10 +418,13 @@ function VirtualList(inCont, options) {
                             }
                             node.virtualListVisibleIdx = idx;
                             self.onFillNode(node, item, idx);
-                            var top = idx * rowHeight;
+                            var left = xIdx * xWidth;
+                            var top = yIdx * rowDimensions.height;
+                            node.style.left = `${left}px`;
                             node.style.top = `${top}px`;
+                            node.leftOfRow = left;
                             node.topOfRow = top;
-                            self.injectRow(node, top);
+                            self.injectRow(node, left, top);
                             newNodes.push(node);
                         }
                     }
@@ -432,7 +459,7 @@ function VirtualList(inCont, options) {
             self.reflow();
         },
         scrollToIdx: (idx, scrollOptions) => {
-            self.setScroll(idx * self.getRowHeight(), scrollOptions);
+            self.setScroll(idx * self.getRowDimensions().height, scrollOptions);
         },
         onCreateNode: () => {
             return self.execEvent("onCreateNode");
@@ -444,7 +471,7 @@ function VirtualList(inCont, options) {
 
         },
         pointToIdx: (xPos, yPos) => {
-            return Math.floor(yPos / self.getRowHeight());
+            return Math.floor(yPos / self.getRowDimensions().height);
         },
         pointToItem: (xPos, yPos) => {
             return self.getItem(self.pointToIdx(xPos, yPos));
@@ -619,19 +646,22 @@ function VirtualList(inCont, options) {
     node.style.maxHeight = "1px";
     node.classList.add("width_template");
     listCont.appendChild(node);
-    if(!self.getRowHeight) {
-        self.getRowHeight = () => {
-            if(!self.heightRow) {
+    if(!self.getRowDimensions) {
+        self.getRowDimensions = () => {
+            if(!self.dimensionsRow) {
                 node = self.getCleanNode();
                 node.style.pointerEvents = "none";
                 node.style.opacity = 0;
                 node.style.position = "absolute";
                 node.classList.add("size_template");
                 listCont.appendChild(node);
-                self.heightRow = node;
+                self.dimensionsRow = node;
             }
-            var rect = getNodeBounds(self.heightRow);
-            return rect.fullHeight;
+            var rect = getNodeBounds(self.dimensionsRow);
+            return {
+                width: rect.fullWidth,
+                height: rect.fullHeight
+            };
         };
     }
     domEventListener.addEvent(scrollWrapper, "scroll", "vlist", self.onScroll);
@@ -684,7 +714,6 @@ function AddSelectableVirtualListPlugin(vlist, options) {
 
     self = {
         eventId: 0,
-        rowHeight: 16,
         selectedIdx: 0,
         vlist: vlist,
         selectItem: (idx, selectOptions) => {
@@ -736,9 +765,9 @@ function AddSelectableVirtualListPlugin(vlist, options) {
                 case 34: // pgdown
                     if(isVisible) {
                         var up = e.keyCode === 33;
-                        var viewHeight = self.vlist.viewHeight;
-                        var rowHeight = self.vlist.getRowHeight();
-                        var idx = self.selectedIdx + Math.floor(viewHeight / rowHeight) * (up ? -1 : 1);
+                        var viewDimensions = self.vlist.viewDimensions;
+                        var rowDimensions = self.vlist.getRowDimensions();
+                        var idx = self.selectedIdx + Math.floor(viewDimensions.height / rowDimensions.height) * (up ? -1 : 1);
                         self.selectItem(idx, {
                             scrollTo: true
                         });
@@ -909,7 +938,7 @@ function StyledSelect(node, options) {
     self = {
         eventId: 0,
         ignoreGlobal: false,
-        rowHeight: 0,
+        height: 16,
         cont: styledSelectDiv,
         vlist: vlist,
         dropdownOnKey: (e) => {
@@ -988,7 +1017,9 @@ function StyledSelect(node, options) {
     noEvent = false;
     requestAnimationFrame(() => {
         addChildAfter(node, styledSelectDiv);
-        self.rowHeight = styledSelectDiv.offsetHeight - 2;
+        self.rowDimensions = {
+            height: styledSelectDiv.offsetHeight - 2
+        };
     });
     return self.vlist;
 }
@@ -1465,3 +1496,72 @@ function WebSocketFactory(url, options) {
 }
 
 var domEventListener = DomEventListener();
+
+function prettyPrintObject(...args) {
+    let counter = 1;
+    let iter = [];
+    function add(indent, item, key = null, toFront = false, quotes = true) {
+        let pop = {
+            indent: indent,
+            item: item,
+            key: key,
+            quotes: quotes
+        };
+        if (toFront) iter.unshift( pop);
+        else iter.push( pop);
+    };
+    let ss = "";
+    for (let i = 0; i < args.length; i++) add(0, args[i]);
+    while (iter.length) {
+        let pop = iter.splice( 0, 1)[0];
+        let s = `${pop.indent > 0 ? `${new Array(pop.indent * 4).join( " ")}` : ""}${pop.key !== null ? `${pop.key}: ` : ""}`;
+        switch (typeof pop.item) {
+            case undefined:
+                break;
+            case "string":
+                s += pop.quotes ? `"${pop.item}"` : `${pop.item}`;
+                break;
+            case "function":
+                s += "function";
+                break;
+            case "object":
+                let ty = pop.item.constructor.name;
+                let isArray = ty === "Array";
+                s += `[${ty}] ${isArray ? "[" : "{"}`;
+                if (!pop.item.UNIQUE_ID) {
+                    add(pop.indent, `${isArray ? "]" : "}"}`, null, true, false);
+
+                    let keys = Object.keys(pop.item);
+                    let keyCount = 0;
+                    for (let i = 0; i < keys.length; i++) {
+                        let key = keys[keys.length - i - 1];
+                        if(key == "UNIQUE_ID") continue;
+                        keyCount++;
+                        add(pop.indent + 1, pop.item[key], isArray ? null : key, true);
+                    }
+                    pop.item.UNIQUE_ID = counter++;
+                    if (keyCount && !isArray) add(pop.indent + 0.5, "-Members-", null, true, false);
+
+                    if (ty !== "Object" && !isArray && typeof pop.item.constructor.prototype !== "undefined") {
+                        let proto = Object.getPrototypeOf(pop.item);
+                        keys = Object.getOwnPropertyNames(proto);
+                        add(pop.indent + 1, "", null, true, false); // Newline
+                        for (let i = 0; i < keys.length; i++) {
+                            let key = keys[keys.length - i - 1];
+                            add(pop.indent + 1, proto[key], key, true, false);
+                        }
+                        add(pop.indent + 0.5, "-Prototype-", null, true, false);
+                    }
+                }
+                else {
+                    add(pop.indent + 0.5, "-Recursive-", null, true);
+                }
+                break;
+            default:
+                s += pop.item;
+                break;
+        }
+        ss += `${s}${iter.length ? "\n" : ""}`;
+    }
+    console.log_(ss);
+}
