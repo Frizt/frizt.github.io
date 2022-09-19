@@ -19,7 +19,9 @@ function Server(port, defaultFile, options) {
 
     function fileNotFound(res) {
         console.log("Not found");
-        res.writeHead(404, {"Content-Type": "text/plain"});
+        res.writeHead(404, {
+            "Content-Type": "text/plain",
+        });
         res.end(null);
     }
 
@@ -31,7 +33,7 @@ function Server(port, defaultFile, options) {
     }
 
     function serveFile(res, filePath) {
-        console.log("Reading file " + filePath);
+//        console.log("Reading file " + filePath);
         fs.readFile(filePath, (err, data) => {
             if(err) {
                 fileNotFound(res);
@@ -59,21 +61,19 @@ function Server(port, defaultFile, options) {
                 return;
             }
             let resourcePath = path.resolve(dir);
-            //console.log(pathname, dir);
             let validResourcePaths = [
                 "res\\js",
                 "res\\css",
                 "res\\img",
                 "res\\json",
-                "res\\json",
                 "common\\js",
                 "common\\css",
                 "common\\img"
-            ];
-            let matched = false;
+            ].concat(options.validResourcePaths || []);
+            let matched = null;
             for(let i = 0; i < validResourcePaths.length; i++) {
                 if(!(dir + "\\").startsWith(validResourcePaths[i] + "\\")) continue;
-                matched = true;
+                matched = i;
                 if(validResourcePaths[i].endsWith("json") ||
                     validResourcePaths[i].endsWith("csv")) {
                     mimeType = mime.get_file_mime_type(path.extname(fileName));
@@ -83,26 +83,24 @@ function Server(port, defaultFile, options) {
                 }
                 break;
             }
-            if(!matched) {
+            let filePath = path.resolve(path.join(dir, fileName));
+            console.log(filePath);
+            if(matched === null) {
                 res.setHeader('Content-type', mime.get_file_mime_type(".html"));
                 serveFile(res, defaultFile);
                 return;
             }
-            //console.log(mimeType, path.extname(fileName));
-            if(mimeType === null) {
+            if(mimeType === null && (!options.allowedFileExtensions || options.allowedFileExtensions.indexOf(path.extname(fileName)) === -1)) {
                 fileNotFound(res);
                 return;
             }
 
-            let filePath = path.resolve(path.join(dir, fileName));
-            //console.log(filePath);
             let truePath = path.resolve(dir);
             if(!filePath.startsWith(truePath)) {
                 fileNotFound(res);
                 return;
             }
 
-            //console.log(filePath);
             fs.stat(filePath, function(err, stats) {
                 let serveData = true;
                 if(!err && stats.isDirectory()) err = 1;

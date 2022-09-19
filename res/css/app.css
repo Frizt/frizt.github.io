@@ -1,16 +1,3 @@
-* {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    box-sizing: border-box;
-}
-
-body {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-}
-
 .item_cont {
     border: 1px solid black;
     margin: 3px;

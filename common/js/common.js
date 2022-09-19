@@ -27,6 +27,16 @@ function toNumber(str) {
     return num;
 }
 
+function setupDownload(a, fileName, data) {
+    a.download = fileName;
+    if(a.uri) {
+        window.URL.revokeObjectURL(a.uri_);
+        a.uri_ = null;
+    }
+    a.uri_ = window.URL.createObjectURL(data);
+    a.href = a.uri_;
+}
+
 function getRefreshRate() {
     var iterations = 0;
     var startTime = 0;
@@ -269,8 +279,11 @@ function VirtualList(inCont, options) {
     listCont.classList.add("virtual_list_body");
     listCont.style.position = "relative";
     scrollWrapper.appendChild(listCont);
+    let vlistIdArray = new Uint32Array(1);
+    crypto.getRandomValues(vlistIdArray)
     var self;
     self = {
+        id: vlistIdArray[0],
         plugins: {},
         data: [],
         cont: inCont,
@@ -352,6 +365,7 @@ function VirtualList(inCont, options) {
                 self.listCont.appendChild(node);
             }
         },
+        lastItemsPerRow: null,
         reflow: (reflowOptions) => {
             reflowOptions = reflowOptions || {};
             if(reflowRaf !== null) cancelAnimationFrame(reflowRaf);
@@ -364,6 +378,7 @@ function VirtualList(inCont, options) {
                     height: self.cont.offsetHeight
                 };
                 if(scrolled) {
+                    reflowScrollOptions.viewWidth = self.viewDimensions.width;
                     reflowScrollOptions.viewHeight = self.viewDimensions.height;
                     reflowScrollOptions.itemSize = rowDimensions.height;
                     smartScroll(scrollWrapper, reflowScroll, reflowScrollOptions);
@@ -371,6 +386,8 @@ function VirtualList(inCont, options) {
                     reflowScroll = scrollWrapper.scrollTop;
                 }
                 var itemsPerRow = Math.floor(self.viewDimensions.width / rowDimensions.width);
+                var forceReflow = reflowOptions.forceUpdate;
+                self.slowRefresh = false;
                 if(!itemsPerRow) itemsPerRow = 1;
                 self.height = Math.ceil(nodeCount / itemsPerRow) * rowDimensions.height;
                 self.listCont.style.height = `${self.height}px`;
@@ -397,13 +414,14 @@ function VirtualList(inCont, options) {
                     time = new Date().getTime();
                     if(time - startTime >= maxTime) break;
                 }
+                var reflowRows = false;
                 var newNodes = [];
                 var xWidth = self.viewDimensions.width / (itemsPerRow);
                 for(var i = 0; i < visibleNodes.length; i++) {
                     var idx = visibleNodes[i];
                     var xIdx = idx % itemsPerRow;
                     var yIdx = Math.floor(idx / itemsPerRow);
-                    if(!self.visibleNodes[idx] || reflowOptions.forceUpdate) {
+                    if(!self.visibleNodes[idx] || forceReflow) {
                         var item = self.getItem(idx);
                         if(item !== null) {
                             var node;
@@ -417,7 +435,9 @@ function VirtualList(inCont, options) {
                                 node = self.visibleNodes[idx].node;
                             }
                             node.virtualListVisibleIdx = idx;
-                            self.onFillNode(node, item, idx);
+                            if(!self.onFillNode(node, item, idx)) {
+                                reflowRows = true;
+                            }
                             var left = xIdx * xWidth;
                             var top = yIdx * rowDimensions.height;
                             node.style.left = `${left}px`;
@@ -435,9 +455,9 @@ function VirtualList(inCont, options) {
                     newNodes[i].style.display = "";
                 }
                 time = new Date().getTime();
-                var diff = time - startTime >= maxTime;
-                if(diff >= maxTime) {
-                    console.log(`Took ${diff}ms to update, queuing another refresh`);
+                var diff = time - startTime;
+                if(diff >= maxTime || reflowRows) {
+                    //console.log(`Took ${diff}ms to update, queuing another refresh`);
                     self.reflow(); //Queue another round of updates
                 }
                 if(options.syncColumnWidths) self.syncRowSizes();
@@ -447,6 +467,9 @@ function VirtualList(inCont, options) {
             scrolled = true;
             reflowScroll = scrollWrapper.scrollTop;
             self.reflow();
+        },
+        onResize: () => {
+            return self.execEvent("onResize");
         },
         getScroll: () => {
             return reflowScroll;
@@ -535,6 +558,7 @@ function VirtualList(inCont, options) {
             if(removeOptions.removeFromParent) {
                 removeFromParent(self.cont);
             }
+            domEventListener.removeEvent(document.body, "resize", `${self.id}`);
         },
         buildHeader: () => {
             var header = self.execEvent("onBuildHeader");
@@ -586,6 +610,9 @@ function VirtualList(inCont, options) {
                 for(var i = 0; i < events.length; i++) {
                     var eResults = events[i].event.apply(this, args);
                     if(typeof eResults === "object") {
+                        if(typeof eResults.result === "undefined" && typeof eResults.continue === "undefined") {
+                            console.error("Invalid exec event, must pass back {result:...}", events[i]);
+                        }
                         result = eResults.result;
                         if(typeof eResults.continue !== "undefined" && !eResults.continue)
                             break;
@@ -637,6 +664,18 @@ function VirtualList(inCont, options) {
             result: node
         };
     });
+    var debouncer = null;
+    self.addEvent("onResize", "default", () => {
+        clearTimeout(debouncer);
+        //debouncer = setTimeout(() => {
+            self.reflow({
+                forceUpdate: true
+            });
+        //}, 50);
+        return {
+            continue: true
+        };
+    });
 
     var node = self.getCleanNode();
     node.style.opacity = 0;
@@ -665,6 +704,7 @@ function VirtualList(inCont, options) {
         };
     }
     domEventListener.addEvent(scrollWrapper, "scroll", "vlist", self.onScroll);
+    domEventListener.addEvent(document.body, "resize", `${self.id}`, self.onResize);
     self.cont.classList.add("virtual_list");
     self.cont.appendChild(scrollWrapper);
     return self;
@@ -697,7 +737,7 @@ function AddValueVirtualListPlugin(vlist, options) {
         return { result: self.list.length,  continue: false };
     });
     self.vlist.setList = (newList) => {
-        self.vlist.execEvent("setList", newList);
+        return self.vlist.execEvent("setList", newList);
     };
     return self.vlist;
 }
@@ -1029,6 +1069,82 @@ function SearchSelect(node, options) {
     return self;
 }
 
+class Tabber {
+    constructor(options) {
+        this.init();
+        this.setupBindings();
+        this.options = options;
+    }
+
+    init() {
+        this.buttons = document.querySelectorAll(".tab_button");
+        this.tabs = document.querySelectorAll(".tab_content");
+    }
+
+    setupBindings() {
+        for(let i = 0; i < this.buttons.length; i++) {
+            let button = this.buttons[i];
+            button.onclick = (e) => {
+                let res = !this.options.onButtonClick || this.options.onButtonClick(e, {
+                    button: button,
+                    res: button.getAttribute("data-tab_url")
+                });
+                if(res) {
+                    this.changeTabWithButton(button, {
+                        event: e
+                    });
+                }
+            };
+        }
+    }
+
+    changeTabWithButton(button, options = {}) {
+        this.changeTab(button.getAttribute("data-tab_url"));
+    }
+
+    changeTab(url, options = {}) {
+        if(!url) {
+            console.error(`ERROR: Dead url ${url}`);
+            return;
+        }
+        let originalUrl = url;
+        for(let i = 0; i < this.tabs.length; i++) {
+            let tab = this.tabs[i];
+            tab.style.display = "none";
+        }
+        for(let i = 0; i < this.buttons.length; i++) {
+            let button = this.buttons[i];
+            button.classList.remove("selected");
+        }
+        while(url && url.length) {
+            let tabButton = null;
+            for(let i = 0; i < this.buttons.length; i++) {
+                let button = this.buttons[i];
+                if(button.getAttribute("data-tab_url") === url) {
+                    button.classList.add("selected");
+                }
+            }
+            for(let i = 0; i < this.tabs.length; i++) {
+                let tab = this.tabs[i];
+                if(tab.getAttribute("data-tab_url") === url) {
+                    tab.style.display = "";
+                    if(this.options.onTabChange) {
+                        this.options.onTabChange(options.event, {
+                            tab: tab,
+                            url: url,
+                            originalUrl: originalUrl
+                        });
+                    }
+                }
+            }
+            let sp = url.split("/");
+            if(sp.length === 1) sp = [];
+            else sp.splice(sp.length - 1, 1);
+            url = sp.join("/");
+        }
+    }
+}
+
 function TabNav(options) {
     options = options || {};
     var self;
@@ -1087,7 +1203,7 @@ function TabNav(options) {
             self.onTabChange(tabGroup, tabName, e);
         },
         setTabFromUrl: (url) => {
-            console.error("Not implemented");
+            //console.error("Not implemented");
             //var segments = url.split("/");
             //var tables
             //for(var i = 0; i < segments.length; i++) {
@@ -1167,6 +1283,48 @@ function injectHtml(cont, inject, options) {
     }
 }
 
+class PageResizeWatcher {
+    constructor() {
+        let node = this.node = document.createElement("span");
+        node.style.width = "100vw";
+        node.style.height = "100vh";
+        node.style.pointerEvents = "none";
+        node.style.position = "absolute";
+        node.style.top = "0px";
+        node.style.left = "0px";
+        node.classList.add("resize_watcher");
+        node.classList.add("resize_watcher");
+        this.raf = null;
+        this.width = null;
+        this.height = null;
+        this.queueTick();
+    }
+
+    queueTick() {
+        if(this.raf !== null) cancelAnimationFrame(this.raf);
+        this.raf = requestAnimationFrame(this.tick.bind(this));
+    }
+
+    tick() {
+        this.queueTick();
+        if(!this.node.parentNode) {
+            document.body.appendChild(this.node);
+            return;
+        }
+        let width = this.node.offsetWidth;
+        let height = this.node.offsetHeight;
+        if(this.width !== width || this.height !== height) {
+            //console.log(`Page was resized {w: ${width}, h: ${height}}`);
+            domEventListener.trigger(document.body, "resize", {
+                width: width,
+                height: height
+            });
+        }
+        this.width = width;
+        this.height = height;
+    }
+}
+
 function DomEventListener() {
     var self;
     var uniqueNumber = 0;
@@ -1228,23 +1386,10 @@ function DomEventListener() {
                 }
             }
         },
-        trigger: (node, type, name) => {
-            if(node.nodeId) {
-                if(self.node[nodeId]) {
-                    var events = self.nodes[nodeId][type];
-                    if(events) {
-                        for(var i = 0; i < events.length; i++) {
-                            var event = events[i];
-                            if(event.name === name) {
-                                event.callback(null);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
+        trigger: (node, type, params) => {
+            self.onEvent(null, node, type, params);
         },
-        onEvent: (e, node, type) => {
+        onEvent: (e, node, type, params) => {
             var nodeId = node.nodeId;
             if(nodeId && self.nodes[nodeId] && self.nodes[nodeId][type]) {
                 var events = self.nodes[nodeId][type].list;
@@ -1254,7 +1399,7 @@ function DomEventListener() {
                     callback: events[i].callback
                 });
                 for(var i = 0; i < list.length; i++) {
-                    if(list[i].callback(e) === false) break;
+                    if(list[i].callback(e, params) === false) break;
                 }
             }
         }
@@ -1293,107 +1438,150 @@ function CSVToJson(csvText, options) {
     return json;
 }
 
-function FileUploader(input, uploadArea, options) {
-    options = options || {};
-    var self;
-    var dragOver = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        uploadArea.classList.add("hover");
-    };
-    var dragLeave = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        uploadArea.classList.remove("hover");
-    };
-    var drop = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        self.handleFiles(files);
-        uploadArea.classList.remove("hover");
-    };
-    self = {
-        list: null,
-        files: [],
-        init: () => {
-            self.list = SelectableList(uploadArea, options.listOptions);
-            self.list.addEvent("onFillNode", "fileUploader", (itemNode, item, idx) => {
-                appendText(itemNode, item.name);
-            });
-            self.setupBindings();
-        },
-        setupBindings: () => {
-            var nodes = [
-                uploadArea,
-                input
-            ];
-            if(input.nextSibling) {
-                var next = input.nextElementSibling;
-                if(next.tagName === "LABEL" && next.getAttribute("for") === input.id) {
-                    nodes.push(next);
-                }
+class FileUploader {
+    constructor(input, uploadArea, options) {
+        this.input = input;
+        this.uploadArea = uploadArea;
+        this.options = options;
+        this.list = SelectableList(this.uploadArea, options.listOptions);
+        this.setupBindings();
+        this.batch = 0;
+        if(!options.getState) options.getState = (state) => {
+            switch(state) {
+                case 1:
+                    return "Uploading";
+                    break;
+                case 2:
+                    return "Processing";
+                    break;
+                case 3:
+                    return "Done";
+                    break;
             }
-            for(var i = 0; i < nodes.length; i++) {
-                var node = nodes[i];
-                console.log(node);
-                node.addEventListener("dragenter", dragOver, false);
-                node.addEventListener("dragover", dragOver, false);
-                node.addEventListener("dragleave", dragLeave, false);
-                node.addEventListener("drop", drop, false);
-            }
-            input.addEventListener("change", () => {
-                self.handleFiles(input.files);
-            }, false);
-        },
-        handleFiles: (files) => {
-            var list = [];
-            for(var i = 0; i < files.length; i++) {
-                if(!files[i].type.startsWith("text/")) continue;
-                list.push(files[i]);
-            }
-            self.setList(list);
-        },
-        setList: (files) => {
-            var list = new Array(files.length);
-            input.classList.toggle("dropped", files.length > 0);
-            uploadArea.classList.toggle("dropped", files.length > 0);
-            var completed = 0;
-            var updateListDebounce = null;
-            for(var i = 0; i < files.length; i++) {
-                list[i] = "";
-                var file = files[i];
-                const reader = new FileReader();
-                reader.onloadend = (e) => {
-                    completed++;
-                    if(completed >= files.length) {
-                        if(options.onUploadFinish) {
-                            options.onUploadFinish(list);
-                        }
-                    }
-                };
-                ((name, idx) => {
-                    reader.onload = (e) => {
-                        list[idx] = {
-                            name: name,
-                            data: e.target.result
-                        };
-                        if(!updateListDebounce) {
-                            updateListDebounce = setTimeout(() => {
-                                self.list.setList(list);
-                                self.files = list;
-                                updateListDebounce = null;
-                            }, 50);
-                        }
-                    };
-                })(file.name, i);
-                reader.readAsBinaryString(files[i]);
+        };
+    }
+    updateList() {
+        this.setList(this.files);
+    }
+    setupBindings() {
+        var nodes = [
+            this.uploadArea,
+            this.input
+        ];
+        if(this.input.nextSibling) {
+            let next = this.input.nextElementSibling;
+            if(next.tagName === "LABEL" && next.getAttribute("for") === this.input.id) {
+                nodes.push(next);
             }
         }
-    };
-    self.init();
-    return self;
+        let dragOver = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            this.uploadArea.classList.add("hover");
+        };
+        let dragLeave = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            this.uploadArea.classList.remove("hover");
+        };
+        let drop = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            this.files = e.dataTransfer.files;
+            this.uploadArea.classList.remove("hover");
+            this.processFiles(e.dataTransfer.files);
+        };
+        for(let i = 0; i < nodes.length; i++) {
+            let node = nodes[i];
+            node.addEventListener("dragenter", dragOver, false);
+            node.addEventListener("dragover", dragOver, false);
+            node.addEventListener("dragleave", dragLeave, false);
+            node.addEventListener("drop", drop, false);
+        }
+        this.input.addEventListener("change", () => {
+            this.processFiles(this.input.files);
+        }, false);
+    }
+
+    processFiles(files) {
+        if(this.options.onDropped) this.options.onDropped();
+        let batch = this.batch;
+        this.batch++;
+        this.files = [];
+        let list = [];
+        let p = [];
+        for(let i = 0; i < files.length; i++) {
+            let idx = i;
+            let file = files[i];
+            if(this.options.uploadFilter && !this.options.uploadFilter(files[i])) continue;
+            p.push(new Promise(resolve => {
+                list.push({
+                    name: file.name,
+                    state: this.options.getState(1),
+                    size: file.size,
+                    type: file.type,
+                    idx: idx
+                });
+                let item = list[list.length - 1];
+                let reader = new FileReader();
+                reader.onloadend = (e) => {
+                    item.data = e.target.result;
+                    if(this.options.processFile) {
+                        item.state = this.options.getState(2);
+                        this.updateList();
+                        return this.options.processFile(item, batch).then((processedItem) => {
+                            item.state = this.options.getState(3);
+                            this.updateList();
+                            resolve(processedItem);
+                        });
+                    }
+                    else {
+                        this.updateList();
+                        resolve();
+                    }
+                };
+                reader.onload = (e) => {
+                };
+                reader.readAsBinaryString(file);
+            }));
+        }
+        this.files = list;
+        this.updateList();
+        return Promise.all(p).then((processedList) => {
+            this.setList(list);
+            let data = {
+                files: this.files,
+                processedList: processedList
+            };
+            if(this.options.onProcessFinish) {
+                this.options.onProcessFinish(data, batch);
+            }
+            return list;
+        });
+    }
+
+    reset() {
+        this.setList([]);
+    }
+
+    upload() {
+        if(!options.onUpload) {
+            console.error("No onUpload handler passed in");
+            return;
+        }
+        let files = this.files;
+        for(let i = 0; i < files.length; i++) {
+            let file = files[i];
+            options.onUpload(file);
+        }
+    }
+
+    setList(list) {
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        this.list.setList(list);
+        this.input.classList.toggle("dropped", list.length > 0);
+        this.uploadArea.classList.toggle("dropped", list.length > 0);
+    }
 }
 
 
@@ -1412,7 +1600,7 @@ function WebSocketFactory(url, options) {
             console.log("Created new socket");
             var socket = new WebSocket(url);
             var interval = () => {
-                if(socket.readyState !== 0 && socket.readyState !== 1) { 
+                if(socket.readyState !== 0 && socket.readyState !== 1) {
                     self.connecting = false;
                     console.log("Websocket connection failed");
                 }
@@ -1496,6 +1684,7 @@ function WebSocketFactory(url, options) {
 }
 
 var domEventListener = DomEventListener();
+var pageResizeWatcher = new PageResizeWatcher();
 
 function prettyPrintObject(...args) {
     let counter = 1;
@@ -1577,3 +1766,77 @@ function prettyPrintObject(...args) {
     }
     console.log_(ss);
 }
+
+class BitmapCanvas {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+        this.raw = [];
+        this.raf = null;
+        this.formatter = {
+            rgb: () => {
+                let buffer = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                return buffer.data;
+            }
+        };
+    }
+
+    setToImage(img) {
+        this.canvas.width = img.width;
+        this.canvas.height = img.height;
+        this.ctx.drawImage(img, 0, 0);
+    }
+
+    setSize(width, height) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+    }
+
+    setImageBuffer(inBuffer, width, height, inFormat) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+        let data = this.ctx.createImageData(width,height);
+        if(inFormat === "grayscale") {
+            for(let i = 0; i < inBuffer.length; i++) {
+                let idx1 = i;
+                let idx2 = i * 4;
+                data.data[idx2] = inBuffer[idx1];
+                data.data[idx2+1] = inBuffer[idx1];
+                data.data[idx2+2] = inBuffer[idx1];
+                data.data[idx2+3] = 255;
+            }
+        }
+        this.ctx.putImageData(data, 0, 0);
+    }
+
+    getImageBuffer(format) {
+        return this.formatter[format]();
+    }
+
+    getPixel(x, y) {
+        if(x < 0 || y < 0 || x >= this.canvas.width, x >= this.canvas.height) return null;
+        let idx = (y * this.canvas.width + x) * 4;
+        return null;
+    }
+
+    setPixel(x, y, r, g, b, a) {
+        if(x < 0 || y < 0 || x >= this.canvas.width, x >= this.canvas.height) return null;
+        let idx = (y * this.canvas.width + x) * 4;
+        //this.raw[idx] = r;
+        //this.raw[idx+1] = g;
+        //this.raw[idx+2] = b;
+        //this.raw[idx+3] = a;
+        //if(this.raf !== null) cancelAnimationFrame(this.raf);
+        //this.raf = requestAnimationFrame(() => {
+        //    this.ctx.putImageData(this.raw, 0, 0);
+        //});
+    }
+}
+
+
+
+
+
+
+
+
